@@ -68,7 +68,7 @@ chrome.runtime.onMessage.addListener((message: InternalRequest, sender, sendResp
   return true;
 });
 chrome.runtime.onMessageExternal.addListener((message: ExternalRequest, sender, sendResponse) => {
-  if (!sender.url || new URL(sender.url).origin !== config.websiteOrigin || sender.origin !== config.websiteOrigin) return;
+  if (!sender.url || !sender.origin || !config.websiteOrigins.includes(new URL(sender.url).origin) || !config.websiteOrigins.includes(sender.origin)) return;
   const operation: InternalRequest | undefined = message.type === 'SKINCITO_GET_STATUS' ? {type: 'GET_STATUS'} :
     message.type === 'SKINCITO_OPEN_TRADE' ? {type: 'OPEN_TRADE', tradeId: message.tradeId} :
     message.type === 'SKINCITO_CREATE_OFFER' ? {type: 'CREATE_OFFER', tradeId: message.tradeId} : undefined;

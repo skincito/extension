@@ -10,12 +10,16 @@ for (const key of ['apiBaseUrl', 'websiteOrigin']) {
 }
 const api = new URL(config.apiBaseUrl);
 const web = new URL(config.websiteOrigin);
+// La web puede redirigir entre skincito.com y www.skincito.com: aceptamos ambos orígenes.
+const alternate = new URL(web.origin);
+alternate.hostname = web.hostname.startsWith('www.') ? web.hostname.slice(4) : `www.${web.hostname}`;
+config.websiteOrigins = isLocal(web) ? [web.origin] : [web.origin, alternate.origin];
 const output = 'dist';
 await fs.rm(output, {recursive: true, force: true});
 await fs.mkdir(output, {recursive: true});
 const manifest = JSON.parse(await fs.readFile('manifest.json', 'utf8'));
 manifest.host_permissions.push(`${api.origin}/*`);
-manifest.externally_connectable.matches = [`${web.origin}/*`];
+manifest.externally_connectable.matches = config.websiteOrigins.map(origin => `${origin}/*`);
 await fs.writeFile(`${output}/manifest.json`, JSON.stringify(manifest, null, 2));
 await fs.copyFile('src/popup.html', `${output}/popup.html`);
 await fs.copyFile('src/offscreen.html', `${output}/offscreen.html`);
