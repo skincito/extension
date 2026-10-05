@@ -10,5 +10,5 @@ export interface TradeAsset {assetid: string; new_assetid?: string; appid: numbe
 export interface SteamOffer {tradeofferid: string; accountid_other: number; otherSteamId: string; trade_offer_state: number; items_to_give: TradeAsset[]; items_to_receive: TradeAsset[]; time_created: number; time_updated: number}
 export interface SteamHistoryTrade {tradeid: string; steamid_other: string; status: number; assets_given: TradeAsset[]; assets_received: TradeAsset[]; time_init: number; time_settlement?: number; rollback_trade?: string}
 export interface OfferReport {marketplaceTradeId: string; steamTradeOfferId: string; otherSteamId: string; givenAssetIds: string[]; receivedAssetIds: string[]}
-export interface StatusReport {marketplaceTradeId: string; steamTradeOfferId?: string; offerState?: number; historyTradeId?: string; historyStatus?: number; candidate: boolean; rolledBack: boolean; checkedAt: string}
+export interface StatusReport {marketplaceTradeId: string; steamTradeOfferId?: string; offerState?: number; historyTradeId?: string; historyStatus?: number; newAssetId?: string; candidate: boolean; rolledBack: boolean; checkedAt: string}
 export interface ProofSubmission {marketplaceTradeId: string; steamTradeId: string; proof: string; proofFormat: 'tlsnotary-csfloat-v1'}

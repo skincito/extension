@@ -12,7 +12,7 @@ Body: `{marketplaceTradeId, steamTradeOfferId, otherSteamId, givenAssetIds: stri
 
 ## `POST /extension/trades/{id}/steam-status`
 
-Body: `{marketplaceTradeId, steamTradeOfferId?, offerState?, historyTradeId?, historyStatus?, candidate, rolledBack, checkedAt}`. Respuesta `200`: `{accepted: true}`. Datos de telemetría no confiables; no autorizan `VERIFIED`. Limitación de frecuencia y deduplicación por trade/estado.
+Body: `{marketplaceTradeId, steamTradeOfferId?, offerState?, historyTradeId?, historyStatus?, newAssetId?, candidate, rolledBack, checkedAt}`. Respuesta `200`: `{accepted: true}`. Datos de telemetría no confiables; no autorizan `VERIFIED`. Cuando `candidate` es `true`, la API encola una revisión del inventario público del comprador; la entrega se confirma sólo si Steam muestra el item (por float y seed, o por `newAssetId` con protección de trade activa si el item no tiene float). Limitación de frecuencia y deduplicación por trade/estado.
 
 ## `POST /extension/trades/{id}/proof`
 
