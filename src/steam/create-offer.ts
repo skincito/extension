@@ -1,4 +1,4 @@
-import type {PendingTrade, OfferReport} from '../types';
+import type {PendingTrade, OfferReport, SendOfferResponse} from '../types';
 import {getSteamSession, requireSeller} from './session';
 import {accountIdToSteamId} from './trade-offers';
 function parseTradeUrl(trade: PendingTrade): {token: string; partner: string} {
@@ -21,8 +21,13 @@ export async function createOffer(trade: PendingTrade): Promise<OfferReport> {
     condition: {urlFilter: 'https://steamcommunity.com/tradeoffer/new/send', resourceTypes: [chrome.declarativeNetRequest.ResourceType.XMLHTTPREQUEST], initiatorDomains: [chrome.runtime.id]}}]});
   try {
     const response = await fetch('https://steamcommunity.com/tradeoffer/new/send', {method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: form});
-    const result = await response.json() as {tradeofferid?: string; strError?: string};
+    const result = await response.json() as SendOfferResponse;
     if (!response.ok || !result.tradeofferid) throw new Error(result.strError || `Steam respondió ${response.status}`);
-    return {marketplaceTradeId: trade.id, steamTradeOfferId: result.tradeofferid, otherSteamId: trade.buyerSteamId, givenAssetIds: [trade.assetId], receivedAssetIds: []};
+    return {marketplaceTradeId: trade.id, steamTradeOfferId: result.tradeofferid, otherSteamId: trade.buyerSteamId, givenAssetIds: [trade.assetId], receivedAssetIds: [],
+      needsConfirmation: needsConfirmation(result)};
   } finally {await chrome.declarativeNetRequest.updateSessionRules({removeRuleIds: [ruleId]})}
+}
+/** Steam devuelve el ID aunque la oferta todavía tenga que confirmarse en la app o por email. */
+export function needsConfirmation(result: SendOfferResponse): boolean {
+  return Boolean(result.needs_mobile_confirmation || result.needs_email_confirmation);
 }

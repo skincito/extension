@@ -1,4 +1,4 @@
-import type {ActiveTrade, OfferReport} from '../types';
+import type {ActiveTrade, OfferReport, SendOfferResponse} from '../types';
 import type {PageMessage} from './protocol';
 declare const UserThem: {strSteamId?: string} | undefined;
 declare const UserYou: {findAsset?: (appid: number, contextid: number, assetid: string) => {element?: HTMLElement} | undefined} | undefined;
@@ -6,7 +6,7 @@ declare const MoveItemToTrade: (element: HTMLElement) => void;
 declare const ShowItemInventory: (appid: number, contextid: number) => void;
 declare const g_steamID: string | undefined;
 declare const g_rgCurrentTradeStatus: {me?: {assets?: {appid: number; contextid: string; assetid: string}[]}; them?: {assets?: {appid: number; contextid: string; assetid: string}[]}} | undefined;
-declare const $J: ((target: Document) => {on: (event: string, cb: (_: unknown, request: {responseJSON?: {tradeofferid?: string}}, settings: {url: string; data?: string}) => void) => void}) | undefined;
+declare const $J: ((target: Document) => {on: (event: string, cb: (_: unknown, request: {responseJSON?: SendOfferResponse}, settings: {url: string; data?: string}) => void) => void}) | undefined;
 let active: ActiveTrade | null = null;
 let banner: HTMLDivElement | undefined;
 function render(message: string, warning = false): void {
@@ -65,8 +65,9 @@ function capture(): void {
       const raw = JSON.parse(form.get('json_tradeoffer') ?? '{}') as {me?: {assets?: {appid: number; assetid: string}[]}; them?: {assets?: {appid: number; assetid: string}[]}};
       const report: OfferReport = {marketplaceTradeId: active.id, steamTradeOfferId: request.responseJSON.tradeofferid,
         otherSteamId: UserThem?.strSteamId ?? '', givenAssetIds: (raw.me?.assets ?? []).map(a => a.assetid),
-        receivedAssetIds: (raw.them?.assets ?? []).map(a => a.assetid)};
-      active = {...active, blockingOffer: {id: report.steamTradeOfferId, state: 9}};
+        receivedAssetIds: (raw.them?.assets ?? []).map(a => a.assetid),
+        needsConfirmation: Boolean(request.responseJSON.needs_mobile_confirmation || request.responseJSON.needs_email_confirmation)};
+      active = {...active, blockingOffer: {id: report.steamTradeOfferId, state: report.needsConfirmation ? 9 : 2}};
       inspect();
       window.postMessage({source: 'skincito-page', type: 'OFFER_CREATED', report} satisfies PageMessage, location.origin);
     } catch (error) {console.error('Skincito offer capture', error)}

@@ -8,7 +8,7 @@ Respuesta `200`: `{ "trades": PendingTrade[] }`. `PendingTrade`: `id`, `sellerSt
 
 ## `POST /extension/trades/{id}/offer`
 
-Body: `{marketplaceTradeId, steamTradeOfferId, otherSteamId, givenAssetIds: string[], receivedAssetIds: string[]}`. Respuesta `200`: `{accepted: true}` si se registró como dato provisional. El backend comprueba dueño, trade, comprador y asset; no marca completado. Repeticiones del mismo ID deben ser idempotentes. Conflictos `409`.
+Body: `{marketplaceTradeId, steamTradeOfferId, otherSteamId, givenAssetIds: string[], receivedAssetIds: string[], needsConfirmation?: boolean}`. `needsConfirmation` es `true` cuando Steam respondió `needs_mobile_confirmation` o `needs_email_confirmation`: la oferta existe pero el vendedor todavía tiene que confirmarla en la app o por email. Respuesta `200`: `{accepted: true}` si se registró como dato provisional. El backend comprueba dueño, trade, comprador y asset; no marca completado. Repeticiones del mismo ID deben ser idempotentes. Conflictos `409`.
 
 ## `POST /extension/trades/{id}/steam-status`
 
