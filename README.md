@@ -15,6 +15,14 @@ Abrí `chrome://extensions`, activá **Developer mode**, elegí **Load unpacked*
 
 `npm run typecheck` y `npm test` verifican tipos y reglas de matching.
 
+### Firefox
+
+`npm run build:firefox` arma `dist-firefox` (Firefox 128+). Se carga desde `about:debugging#/runtime/this-firefox` → **Cargar complemento temporario** → `dist-firefox/manifest.json`; para instalarlo de forma permanente hay que firmarlo en addons.mozilla.org (listado o sin listar). Diferencias con Chrome, todas resueltas en el build:
+
+- Usa una página de fondo (`background.scripts`) en vez de service worker y tiene ID fijo `trade-assistant@skincito.com`.
+- Firefox no tiene `externally_connectable`: el content script `web-bridge.js` corre en la web, marca `<html data-skincito-extension>` y pasa los mensajes `SKINCITO_*` que la web manda por `postMessage`.
+- Sin API offscreen: la prueba TLSNotary corre el worker directo desde la página de fondo. Necesita `SharedArrayBuffer` en la extensión; si Firefox no lo habilita, el worker falla con un error claro y el resto de la extensión sigue andando.
+
 ### Integración con Skincito
 
 La API (`/api/extension/trades/*`) y el asistente de la web están en el repo `fedebogovic/skincito` (ver `docs/extension-integration.md` allí). Para que la web encuentre la extensión, copiá el ID que muestra `chrome://extensions` en `NEXT_PUBLIC_SKINCITO_EXTENSION_ID` de la web. Ese ID cambia entre instalaciones sin empaquetar salvo que fijes `key` en el manifest o publiques la extensión.

@@ -73,21 +73,35 @@ async function handle(message: InternalRequest): Promise<unknown> {
     }
   }
 }
-chrome.runtime.onMessage.addListener((message: InternalRequest, sender, sendResponse) => {
-  if ((message as InternalRequest & {target?: string}).target === 'offscreen') return;
-  if (!['GET_STATUS', 'GET_ACTIVE_TRADE', 'OPEN_TRADE', 'CREATE_OFFER', 'PAGE_OFFER'].includes(message?.type)) return;
-  if (sender.id !== chrome.runtime.id || (sender.url && !sender.url.startsWith('https://steamcommunity.com/') && !sender.url.startsWith(chrome.runtime.getURL('')))) return;
-  handle(message).then(data => sendResponse({ok: true, data})).catch(error => sendResponse({ok: false, error: String(error)}));
-  return true;
-});
-chrome.runtime.onMessageExternal.addListener((message: ExternalRequest, sender, sendResponse) => {
-  if (!sender.url || !sender.origin || !config.websiteOrigins.includes(new URL(sender.url).origin) || !config.websiteOrigins.includes(sender.origin)) return;
-  const operation: InternalRequest | undefined = message.type === 'SKINCITO_GET_STATUS' ? {type: 'GET_STATUS'} :
-    message.type === 'SKINCITO_OPEN_TRADE' ? {type: 'OPEN_TRADE', tradeId: message.tradeId} :
-    message.type === 'SKINCITO_CREATE_OFFER' ? {type: 'CREATE_OFFER', tradeId: message.tradeId} : undefined;
-  if (!operation) return;
+function fromWebsite(url: string | undefined): boolean {
+  try {return !!url && config.websiteOrigins.includes(new URL(url).origin)} catch {return false}
+}
+/** Lo que la web puede pedir: lo mismo llega por externally_connectable (Chrome) o por web-bridge.js (Firefox). */
+function externalOperation(message: ExternalRequest): InternalRequest | undefined {
+  return message?.type === 'SKINCITO_GET_STATUS' ? {type: 'GET_STATUS'} :
+    message?.type === 'SKINCITO_OPEN_TRADE' ? {type: 'OPEN_TRADE', tradeId: message.tradeId} :
+    message?.type === 'SKINCITO_CREATE_OFFER' ? {type: 'CREATE_OFFER', tradeId: message.tradeId} : undefined;
+}
+function respond(operation: InternalRequest, sendResponse: (response: unknown) => void): true {
   handle(operation).then(data => sendResponse({ok: true, data})).catch(error => sendResponse({ok: false, error: String(error)}));
   return true;
+}
+chrome.runtime.onMessage.addListener((message: InternalRequest, sender, sendResponse) => {
+  if ((message as InternalRequest & {target?: string}).target === 'offscreen') return;
+  if (message?.type === 'WEB_REQUEST') {
+    // Sólo desde web-bridge.js corriendo en una pestaña de la web de Skincito.
+    if (sender.id !== chrome.runtime.id || !sender.tab || !fromWebsite(sender.url)) return;
+    const operation = externalOperation(message.request);
+    return operation ? respond(operation, sendResponse) : undefined;
+  }
+  if (!['GET_STATUS', 'GET_ACTIVE_TRADE', 'OPEN_TRADE', 'CREATE_OFFER', 'PAGE_OFFER'].includes(message?.type)) return;
+  if (sender.id !== chrome.runtime.id || (sender.url && !sender.url.startsWith('https://steamcommunity.com/') && !sender.url.startsWith(chrome.runtime.getURL('')))) return;
+  return respond(message, sendResponse);
+});
+chrome.runtime.onMessageExternal?.addListener((message: ExternalRequest, sender, sendResponse) => {
+  if (!sender.origin || !fromWebsite(sender.url) || !config.websiteOrigins.includes(sender.origin)) return;
+  const operation = externalOperation(message);
+  return operation ? respond(operation, sendResponse) : undefined;
 });
 chrome.alarms.onAlarm.addListener(alarm => {if (alarm.name === 'skincito-monitor') void monitorTrades().catch(console.error)});
 chrome.runtime.onInstalled.addListener(() => {void chrome.alarms.create('skincito-monitor', {periodInMinutes: 3, delayInMinutes: 1})});

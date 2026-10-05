@@ -31,6 +31,8 @@ async function session(url: string, maxRecvData: number, maxSentData: number): P
   return {socket, id: await Promise.race([id, new Promise<string>((_, reject) => setTimeout(() => reject(new Error('TLSNotary session timeout')), 10_000))]), completion};
 }
 async function prove(message: {url: string; token: string; sessionUrl: string; verifierUrl: string}): Promise<string> {
+  // La wasm usa memoria compartida entre hilos; sin SharedArrayBuffer (página sin aislamiento cross-origin) no puede arrancar.
+  if (typeof SharedArrayBuffer === 'undefined') throw new Error('El navegador no habilita SharedArrayBuffer en la extensión; TLSNotary no puede correr.');
   await initWasm();
   await initialize({level: 'Warn', crate_filters: [], span_events: undefined}, navigator.hardwareConcurrency || 4);
   const headers = new Map<string, number[]>([['Connection', [...new TextEncoder().encode('close')]], ['Host', [...new TextEncoder().encode('api.steampowered.com')]], ['Accept-Encoding', [...new TextEncoder().encode('gzip')]]]);

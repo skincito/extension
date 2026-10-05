@@ -15,10 +15,12 @@ export async function createOffer(trade: PendingTrade): Promise<OfferReport> {
   const data = {newversion: true, version: 2, me: {assets: [{appid: 730, contextid: 2, amount: 1, assetid: trade.assetId}], currency: [], ready: false}, them: {assets: [], currency: [], ready: false}};
   const form = new URLSearchParams({sessionid: session.sessionId, serverid: '1', partner: trade.buyerSteamId,
     tradeoffermessage: `Skincito trade ${trade.id}`, json_tradeoffer: JSON.stringify(data), captcha: '', trade_offer_create_params: JSON.stringify({trade_offer_access_token: token})});
+  // Strings en vez de los enums de chrome.declarativeNetRequest, que Firefox no expone. Y en Firefox el ID
+  // (trade-assistant@skincito.com) no es el host de la extensión, que es un UUID por instalación.
   const ruleId = 1;
   await chrome.declarativeNetRequest.updateSessionRules({removeRuleIds: [ruleId], addRules: [{id: ruleId, priority: 1,
-    action: {type: chrome.declarativeNetRequest.RuleActionType.MODIFY_HEADERS, requestHeaders: [{header: 'referer', operation: chrome.declarativeNetRequest.HeaderOperation.SET, value: 'https://steamcommunity.com/tradeoffer/new'}]},
-    condition: {urlFilter: 'https://steamcommunity.com/tradeoffer/new/send', resourceTypes: [chrome.declarativeNetRequest.ResourceType.XMLHTTPREQUEST], initiatorDomains: [chrome.runtime.id]}}]});
+    action: {type: 'modifyHeaders' as chrome.declarativeNetRequest.RuleActionType, requestHeaders: [{header: 'referer', operation: 'set' as chrome.declarativeNetRequest.HeaderOperation, value: 'https://steamcommunity.com/tradeoffer/new'}]},
+    condition: {urlFilter: 'https://steamcommunity.com/tradeoffer/new/send', resourceTypes: ['xmlhttprequest' as chrome.declarativeNetRequest.ResourceType], initiatorDomains: [new URL(chrome.runtime.getURL('')).hostname]}}]});
   try {
     const response = await fetch('https://steamcommunity.com/tradeoffer/new/send', {method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: form});
     const result = await response.json() as SendOfferResponse;
