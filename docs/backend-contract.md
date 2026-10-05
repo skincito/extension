@@ -16,8 +16,8 @@ Body: `{marketplaceTradeId, steamTradeOfferId?, offerState?, historyTradeId?, hi
 
 ## `POST /extension/trades/{id}/proof`
 
-Body: `{marketplaceTradeId, steamTradeId, proof, proofFormat: "tlsnotary-csfloat-v1"}`. Respuesta `200`: `{accepted: true}` significa **recibido para validación**, no verificado. El backend verifica firma/attestation del notario, identidad del servidor Steam, respuesta HTTP íntegra, token oculto, sujeto/vendedor, comprador, asset enviado, tiempo, settlement, estado y rollback. Guarda el tradeid probado e impide replay. Puede responder `202` si la verificación es asíncrona, `422` si la prueba falla.
+Body: `{marketplaceTradeId, steamTradeId, proof, proofFormat: "skincito-notary-v1"}`. Respuesta `202`: `{accepted: true, status: "VERIFIED" | "REJECTED" | "RECEIVED", reason?}`. El backend verifica la firma HMAC del notario, que sea `GetTradeHistory` de `api.steampowered.com` con `include_failed=true`, antigüedad menor a 2 horas, comprador, asset enviado, que sea el intento más reciente, posterior al pago, en estado 2/3 con `time_settlement` y sin rollback. Guarda el tradeid probado e impide replay. Si es válida, la orden pasa a `SETTLEMENT_PENDING`. `RECEIVED` significa que la API no tiene configurado el secreto del notario.
 
 ## Servicio notarial
 
-Configurar dos URLs HTTPS/WSS compatibles con el protocolo de CSFloat: registro de sesión (`/session`) y canal verifier (`/verifier?sessionId=...`). El backend o servicio de confianza debe guardar claves del verificador y devolver el payload de `session_completed`. No usar un notario controlado por el vendedor para aprobar pagos. Faltan despliegue, claves, política de attestation y validación de payload en el backend; son trabajo obligatorio antes de producción.
+El notario es `services/notary` del repo `fedebogovic/skincito`: `/session` registra la sesión y `/verifier?sessionId=...` es el canal TLSNotary en modo proxy. El servicio de Skincito controla el notario y comparte con la API el secreto `NOTARY_HMAC_SECRET`; la extensión nunca lo ve. El payload de `session_completed` es `base64url(json).base64url(hmac)`.

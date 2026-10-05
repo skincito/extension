@@ -30,7 +30,7 @@ Para probar en local con `npm run dev` de Skincito, usá `"apiBaseUrl": "http://
 
 El popup permite pegar una operación de prueba en JSON. Queda sólo en `chrome.storage.local`; el `tradeofferid` capturado queda en `demoOfferReport`. La opción **Crear oferta directa** envía una oferta real a Steam y debe usarse con cuidado.
 
-El build incluye el cliente TLSNotary. Para generar pruebas se requiere configurar `notarySessionUrl` y `notaryVerifierUrl` con un servicio compatible con el protocolo usado por CSFloat. El backend debe verificar el payload y la política descrita en [el contrato](docs/backend-contract.md). Hasta desplegar ese servicio, la generación de pruebas no está operativa.
+El build incluye el cliente TLSNotary. `notarySessionUrl` y `notaryVerifierUrl` apuntan al notario propio de Skincito (`services/notary` en `fedebogovic/skincito`, publicado en `notary.skincito.com`). Cuando la extensión ve el trade completo en el historial, prueba `GetTradeHistory` con el notario y manda el payload firmado a la API, que lo valida (ver [el contrato](docs/backend-contract.md)). Para probar en local, usá `ws://localhost:7047/session` y `ws://localhost:7047/verifier`.
 
 ## Documentación
 

@@ -11,6 +11,6 @@ export async function proveTrade(trade: PendingTrade, history: SteamHistoryTrade
   try {
     const response = await chrome.runtime.sendMessage({target: 'offscreen', type: 'PROVE', url: url.href, token, sessionUrl: config.notarySessionUrl, verifierUrl: config.notaryVerifierUrl});
     if (!response?.ok || typeof response.proof !== 'string') throw new Error(response?.error || 'TLSNotary no devolvió una prueba.');
-    await submitProof(trade.id, {marketplaceTradeId: trade.id, steamTradeId: history.tradeid, proof: response.proof, proofFormat: 'tlsnotary-csfloat-v1'});
+    await submitProof(trade.id, {marketplaceTradeId: trade.id, steamTradeId: history.tradeid, proof: response.proof, proofFormat: 'skincito-notary-v1'});
   } finally {await chrome.offscreen.closeDocument().catch(() => {})}
 }
