@@ -3,6 +3,9 @@ export interface PendingTrade {
   marketHashName: string; acceptedAt: string; buyerTradeUrl: string;
   steamTradeOfferId?: string; proofAcceptedAt?: string;
 }
+export interface BlockingOffer {id: string; state: number}
+/** Venta pendiente con la oferta de Steam que impide enviar otra, si existe. */
+export type ActiveTrade = PendingTrade & {blockingOffer?: BlockingOffer};
 export interface TradeAsset {assetid: string; new_assetid?: string; appid: number; contextid?: string}
 export interface SteamOffer {tradeofferid: string; accountid_other: number; otherSteamId: string; trade_offer_state: number; items_to_give: TradeAsset[]; items_to_receive: TradeAsset[]; time_created: number; time_updated: number}
 export interface SteamHistoryTrade {tradeid: string; steamid_other: string; status: number; assets_given: TradeAsset[]; assets_received: TradeAsset[]; time_init: number; time_settlement?: number; rollback_trade?: string}

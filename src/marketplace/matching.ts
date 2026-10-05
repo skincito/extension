@@ -1,4 +1,4 @@
-import type {PendingTrade, SteamHistoryTrade} from '../types';
+import type {PendingTrade, SteamHistoryTrade, SteamOffer} from '../types';
 export const TradeStatus = {Committed: 2, Complete: 3, Failed: 4, TradeProtectionRollback: 12} as const;
 export function latestRelevantAttempt(order: PendingTrade, history: SteamHistoryTrade[]): SteamHistoryTrade | undefined {
   return history.filter(t => t.steamid_other === order.buyerSteamId && t.assets_given.some(a => a.appid === 730 && a.assetid === order.assetId))
@@ -13,4 +13,12 @@ export function evaluateTrade(order: PendingTrade, history: SteamHistoryTrade[])
     (trade.status === TradeStatus.Committed || trade.status === TradeStatus.Complete) &&
     !!trade.time_settlement && !rolledBack && !trade.rollback_trade;
   return {candidate, rolledBack, trade};
+}
+export const TradeOfferState = {Active: 2, Accepted: 3, CreatedNeedsConfirmation: 9, InEscrow: 11} as const;
+const BLOCKING_OFFER_STATES: number[] = [TradeOfferState.Active, TradeOfferState.Accepted, TradeOfferState.CreatedNeedsConfirmation, TradeOfferState.InEscrow];
+export const OFFER_STATE_LABELS: Record<number, string> = {2: 'activa', 3: 'aceptada', 9: 'esperando confirmación en el celular', 11: 'en escrow'};
+/** Oferta enviada que todavía puede entregar (o ya entregó) el asset: registrada para la venta o armada a mano para el mismo comprador y asset. */
+export function findBlockingOffer(order: PendingTrade, sent: SteamOffer[]): SteamOffer | undefined {
+  return sent.find(o => BLOCKING_OFFER_STATES.includes(o.trade_offer_state) && (o.tradeofferid === order.steamTradeOfferId ||
+    (o.otherSteamId === order.buyerSteamId && o.items_to_give.some(a => a.appid === 730 && a.assetid === order.assetId))));
 }

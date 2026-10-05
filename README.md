@@ -25,7 +25,7 @@ Para probar en local con `npm run dev` de Skincito, usá `"apiBaseUrl": "http://
 
 1. Iniciá sesión en Steam Community y en la web de Skincito.
 2. Abrí el popup: muestra SteamID, estado del token local, si hay sesión de Skincito y operaciones pendientes del endpoint `GET /extension/trades/pending`. Desde la orden en la web, el vendedor puede usar los mismos botones.
-3. En una operación, **Abrir Steam** abre la Trade URL. El recuadro muestra comprador y Asset ID; **Agregar asset vendido** sólo busca `appid=730`, `contextid=2` y ese Asset ID.
+3. En una operación, **Abrir Steam** abre la Trade URL. El recuadro muestra comprador y Asset ID; **Agregar asset vendido** sólo busca `appid=730`, `contextid=2` y ese Asset ID. Si ya hay una oferta enviada para esa venta (activa, aceptada, esperando confirmación en el celular o en escrow), la extensión lo avisa y no deja agregar el asset ni crear otra oferta directa. También detecta ofertas armadas a mano al mismo comprador con el mismo asset.
 4. Si Steam devuelve un `tradeofferid`, la extensión registra la oferta. Cada tres minutos consulta ofertas e historial y reporta estados observados.
 
 El popup permite pegar una operación de prueba en JSON. Queda sólo en `chrome.storage.local`; el `tradeofferid` capturado queda en `demoOfferReport`. La opción **Crear oferta directa** envía una oferta real a Steam y debe usarse con cuidado.

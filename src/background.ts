@@ -1,11 +1,13 @@
 import {config} from './config';
-import type {PendingTrade, OfferReport} from './types';
+import type {ActiveTrade, PendingTrade, OfferReport} from './types';
 import type {ExternalRequest, InternalRequest} from './bridge/protocol';
 import {getPendingTrades, reportOffer, SkincitoAuthError} from './marketplace/client';
 import {getSteamSession} from './steam/session';
 import {getAccessToken} from './steam/access-token';
 import {createOffer} from './steam/create-offer';
 import {monitorTrades} from './background/trade-monitor';
+import {getTradeOffers} from './steam/trade-offers';
+import {findBlockingOffer, OFFER_STATE_LABELS} from './marketplace/matching';
 
 const DEMO_KEY = 'demoPendingTrade';
 type SkincitoSession = 'ok' | 'unauthenticated' | 'error';
@@ -20,6 +22,16 @@ async function findTrade(id: string): Promise<PendingTrade> {
   const trade = (await pending()).find(t => t.id === id);
   if (!trade) throw new Error('Operación no encontrada.');
   return trade;
+}
+async function withBlockingOffers(trades: PendingTrade[], sellerSteamId: string): Promise<ActiveTrade[]> {
+  if (!trades.length) return [];
+  const {sent} = await getTradeOffers(sellerSteamId);
+  return trades.map(t => {const o = findBlockingOffer(t, sent); return o ? {...t, blockingOffer: {id: o.tradeofferid, state: o.trade_offer_state}} : t});
+}
+async function assertNoBlockingOffer(trade: PendingTrade): Promise<void> {
+  const [checked] = await withBlockingOffers([trade], trade.sellerSteamId);
+  const offer = checked?.blockingOffer;
+  if (offer) throw new Error(`Ya hay una oferta ${OFFER_STATE_LABELS[offer.state] ?? ''} (${offer.id}) para esta venta. No envíes otra.`);
 }
 async function openTrade(id: string): Promise<{opened: true}> {
   const trade = await findTrade(id);
@@ -38,11 +50,12 @@ async function handle(message: InternalRequest): Promise<unknown> {
     }
     case 'GET_ACTIVE_TRADE': {
       const session = await getSteamSession();
-      return (await pending()).filter(t => t.sellerSteamId === session.steamId);
+      return withBlockingOffers((await pending()).filter(t => t.sellerSteamId === session.steamId), session.steamId);
     }
     case 'OPEN_TRADE': return openTrade(message.tradeId);
     case 'CREATE_OFFER': {
       const trade = await findTrade(message.tradeId);
+      await assertNoBlockingOffer(trade);
       const report = await createOffer(trade);
       const demo = (await chrome.storage.local.get(DEMO_KEY))[DEMO_KEY] as PendingTrade | undefined;
       if (demo?.id === trade.id) await chrome.storage.local.set({demoOfferReport: report});

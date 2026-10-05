@@ -1,8 +1,8 @@
-import type {PendingTrade} from '../types';
+import type {ActiveTrade} from '../types';
 import type {PageMessage} from './protocol';
 const send = <T>(message: unknown): Promise<T> => chrome.runtime.sendMessage(message).then((r: {ok: boolean; data?: T; error?: string}) => {if (!r.ok) throw new Error(r.error); return r.data as T});
 async function init(): Promise<void> {
-  const trades = await send<PendingTrade[]>({type: 'GET_ACTIVE_TRADE'});
+  const trades = await send<ActiveTrade[]>({type: 'GET_ACTIVE_TRADE'});
   const active = trades.find(t => {
     try {
       const a = new URL(t.buyerTradeUrl); const b = new URL(location.href);

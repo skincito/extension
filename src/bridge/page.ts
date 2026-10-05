@@ -1,4 +1,4 @@
-import type {PendingTrade, OfferReport} from '../types';
+import type {ActiveTrade, OfferReport} from '../types';
 import type {PageMessage} from './protocol';
 declare const UserThem: {strSteamId?: string} | undefined;
 declare const UserYou: {findAsset?: (appid: number, contextid: number, assetid: string) => {element?: HTMLElement} | undefined} | undefined;
@@ -7,7 +7,7 @@ declare const ShowItemInventory: (appid: number, contextid: number) => void;
 declare const g_steamID: string | undefined;
 declare const g_rgCurrentTradeStatus: {me?: {assets?: {appid: number; contextid: string; assetid: string}[]}; them?: {assets?: {appid: number; contextid: string; assetid: string}[]}} | undefined;
 declare const $J: ((target: Document) => {on: (event: string, cb: (_: unknown, request: {responseJSON?: {tradeofferid?: string}}, settings: {url: string; data?: string}) => void) => void}) | undefined;
-let active: PendingTrade | null = null;
+let active: ActiveTrade | null = null;
 let banner: HTMLDivElement | undefined;
 function render(message: string, warning = false): void {
   banner ??= document.createElement('div');
@@ -21,21 +21,24 @@ function render(message: string, warning = false): void {
 function inspect(): void {
   if (!active) return;
   if (g_steamID !== active.sellerSteamId || UserThem?.strSteamId !== active.buyerSteamId) {render('Skincito: cuenta o comprador Steam incorrecto. No envíes esta oferta.', true); return}
+  if (active.blockingOffer) {render(`Skincito: ya enviaste la oferta ${active.blockingOffer.id} para esta venta. No envíes otra.`, true); return}
   const assets = g_rgCurrentTradeStatus?.me?.assets ?? [];
   if (assets.some(a => a.assetid !== active!.assetId || a.appid !== 730 || String(a.contextid) !== '2') || (g_rgCurrentTradeStatus?.them?.assets?.length ?? 0) > 0) {
     render('Skincito: la oferta contiene items ajenos a esta venta. No la envíes.', true); return;
   }
   render(`Skincito: comprador ${active.buyerSteamId} · ${active.marketHashName} · Asset ID ${active.assetId}`);
 }
-function enable(trade: PendingTrade): void {
+function enable(trade: ActiveTrade): void {
   active = trade;
   inspect();
   const inventory = document.getElementById('inventories');
   if (inventory) {inventory.style.pointerEvents = 'none'; inventory.style.opacity = '0.65'}
   const button = document.createElement('button'); button.textContent = 'Agregar asset vendido';
   button.style.cssText = 'display:block;margin-top:10px;padding:8px;cursor:pointer';
+  if (trade.blockingOffer) button.disabled = true;
   button.onclick = () => {
     inspect();
+    if (active?.blockingOffer) return;
     if (g_steamID !== trade.sellerSteamId || UserThem?.strSteamId !== trade.buyerSteamId) return;
     if ((g_rgCurrentTradeStatus?.me?.assets?.length ?? 0) > 0 || (g_rgCurrentTradeStatus?.them?.assets?.length ?? 0) > 0) {render('Quitá los otros items antes de continuar.', true); return}
     const asset = UserYou?.findAsset?.(730, 2, trade.assetId)?.element;
@@ -63,6 +66,8 @@ function capture(): void {
       const report: OfferReport = {marketplaceTradeId: active.id, steamTradeOfferId: request.responseJSON.tradeofferid,
         otherSteamId: UserThem?.strSteamId ?? '', givenAssetIds: (raw.me?.assets ?? []).map(a => a.assetid),
         receivedAssetIds: (raw.them?.assets ?? []).map(a => a.assetid)};
+      active = {...active, blockingOffer: {id: report.steamTradeOfferId, state: 9}};
+      inspect();
       window.postMessage({source: 'skincito-page', type: 'OFFER_CREATED', report} satisfies PageMessage, location.origin);
     } catch (error) {console.error('Skincito offer capture', error)}
   });

@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
-import {evaluateTrade} from '../src/marketplace/matching';
-import type {PendingTrade, SteamHistoryTrade} from '../src/types';
+import {evaluateTrade, findBlockingOffer} from '../src/marketplace/matching';
+import type {PendingTrade, SteamHistoryTrade, SteamOffer} from '../src/types';
 const A = '3899876543210123456', B = '76561198000000002', S = '76561198000000001';
 const order: PendingTrade = {id: 'sale', sellerSteamId: S, buyerSteamId: B, assetId: A, marketHashName: 'AK-47 | Redline (Field-Tested)', acceptedAt: '2026-10-04T06:00:00Z', buyerTradeUrl: 'https://steamcommunity.com/tradeoffer/new/?partner=397343274&token=test'};
 const trade: SteamHistoryTrade = {tradeid: '100', steamid_other: B, status: 3, assets_given: [{appid: 730, assetid: A}], assets_received: [], time_init: 1791093660, time_settlement: 1791093700};
@@ -15,4 +15,12 @@ describe('Steam history matching', () => {
   it('latest failed attempt overrides older completed attempt', () => expect(evaluateTrade(order, [trade, {...trade, tradeid: '101', time_init: trade.time_init + 1, status: 4}]).candidate).toBe(false));
   it('latest completed attempt overrides older failed attempt', () => expect(evaluateTrade(order, [{...trade, tradeid: '99', time_init: trade.time_init - 1, status: 4}, trade]).candidate).toBe(true));
   it('does not prove the same sale twice', () => expect(evaluateTrade({...order, proofAcceptedAt: '2026-10-04T07:00:00Z'}, [trade]).candidate).toBe(false));
+});
+describe('Blocking offers', () => {
+  const offer: SteamOffer = {tradeofferid: '555', accountid_other: 0, otherSteamId: B, trade_offer_state: 2, items_to_give: [{appid: 730, assetid: A}], items_to_receive: [], time_created: 0, time_updated: 0};
+  it('blocks an active offer to the buyer with the sold asset', () => expect(findBlockingOffer(order, [offer])?.tradeofferid).toBe('555'));
+  it('blocks offers waiting for mobile confirmation, accepted or in escrow', () => {for (const state of [3, 9, 11]) expect(findBlockingOffer(order, [{...offer, trade_offer_state: state}])).toBeDefined()});
+  it('ignores declined, canceled and expired offers', () => {for (const state of [5, 6, 7]) expect(findBlockingOffer(order, [{...offer, trade_offer_state: state}])).toBeUndefined()});
+  it('ignores offers to another user or with another asset', () => {expect(findBlockingOffer(order, [{...offer, otherSteamId: S}])).toBeUndefined(); expect(findBlockingOffer(order, [{...offer, items_to_give: [{appid: 730, assetid: '999'}]}])).toBeUndefined()});
+  it('matches the registered offer by ID when the HTML fallback has no items', () => expect(findBlockingOffer({...order, steamTradeOfferId: '555'}, [{...offer, otherSteamId: '', items_to_give: []}])).toBeDefined());
 });
