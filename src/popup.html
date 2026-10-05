@@ -1,1 +1,72 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><style>body{font:14px Arial;width:340px;padding:16px;color:#182230}button{margin:6px 0;padding:7px;cursor:pointer}input,textarea{width:100%;box-sizing:border-box;margin:4px 0;padding:5px}pre{white-space:pre-wrap;word-break:break-word}article{border-top:1px solid #ddd;padding:8px 0}</style></head><body><h2>Skincito Trade Assistant</h2><div id="status">Comprobando Steam…</div><div id="trades"></div><details><summary>Pending trade de prueba</summary><p>Se guarda sólo en este navegador.</p><textarea id="fixture" rows="8" placeholder='{"id":"test-1", ...}'></textarea><button id="save">Guardar prueba</button><button id="clear">Borrar prueba</button></details><button id="refresh">Actualizar</button><pre id="error"></pre><script src="popup.js"></script></body></html>
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+:root{--bg:#15171c;--panel:#1e2128;--line:#2c3039;--text:#eef1f5;--muted:#8f98a0;--accent:#3b82f6;--ok:#a4d007;--bad:#ff6b6b}
+*{box-sizing:border-box}
+body{margin:0;width:340px;background:var(--bg);color:var(--text);font:13px/1.4 "Segoe UI",system-ui,Arial,sans-serif}
+header{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.logo{width:30px;height:30px;border-radius:6px;background:var(--accent);display:grid;place-items:center;font:700 17px Arial,sans-serif}
+header h1{margin:0;font-size:15px;font-weight:600;flex:1}
+header small{display:block;font-size:11px;font-weight:400;color:var(--muted)}
+.icon{background:none;border:0;color:var(--muted);cursor:pointer;padding:6px;border-radius:6px;display:grid}
+.icon:hover{background:var(--panel);color:var(--text)}
+.icon.spin svg{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+main{padding:12px 16px 16px}
+h2{margin:14px 0 8px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+h2:first-child{margin-top:0}
+.status{background:var(--panel);border-radius:8px}
+.row{display:flex;align-items:center;gap:10px;padding:9px 12px}
+.row+.row{border-top:1px solid var(--line)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.ok .dot{background:var(--ok)}.bad .dot{background:var(--bad)}
+.row b{font-weight:600;flex:1}
+.row span{color:var(--muted);text-align:right}
+.row a{color:var(--accent);text-decoration:none}
+.trade{background:var(--panel);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.trade .name{font-weight:600;font-size:14px;overflow-wrap:anywhere}
+.trade .meta{color:var(--muted);font-size:12px;margin:2px 0 8px;overflow-wrap:anywhere}
+.actions{display:flex;gap:6px}
+button.primary,button.secondary{flex:1;border:0;border-radius:6px;padding:8px 10px;font:600 13px inherit;font-family:inherit;cursor:pointer}
+button.primary{background:rgba(59,130,246,.15);color:var(--accent)}
+button.primary:hover{background:rgba(59,130,246,.28)}
+button.secondary{background:rgba(255,107,107,.12);color:var(--bad)}
+button.secondary:hover{background:rgba(255,107,107,.22)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.empty{color:var(--muted);text-align:center;padding:16px 8px;background:var(--panel);border-radius:8px}
+#error:not(:empty){margin-top:10px;padding:8px 10px;border-radius:6px;background:rgba(255,107,107,.12);color:var(--bad);white-space:pre-wrap;overflow-wrap:anywhere}
+details{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+summary{cursor:pointer;color:var(--muted);font-size:12px}
+details p{color:var(--muted);font-size:12px;margin:8px 0}
+textarea{width:100%;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px;font:12px Consolas,monospace;resize:vertical}
+body:not(.dev) .dev-only{display:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">S</div>
+  <h1>Skincito<small>Trade Assistant</small></h1>
+  <button id="refresh" class="icon" title="Actualizar" aria-label="Actualizar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+</header>
+<main>
+  <h2>Conexión</h2>
+  <div class="status">
+    <div class="row" id="steam"><i class="dot"></i><b>Steam</b><span>Comprobando…</span></div>
+    <div class="row" id="skincito"><i class="dot"></i><b>Skincito</b><span>Comprobando…</span></div>
+  </div>
+  <h2>Ventas pendientes</h2>
+  <div id="trades"></div>
+  <div id="error"></div>
+  <details id="dev">
+    <summary>Modo desarrollador</summary>
+    <p id="devStatus"></p>
+    <p>Venta de prueba en JSON. Se guarda sólo en este navegador.</p>
+    <textarea id="fixture" rows="6" placeholder='{"id":"test-1", ...}'></textarea>
+    <div class="actions"><button id="save" class="primary">Guardar prueba</button><button id="clear" class="secondary">Borrar prueba</button></div>
+  </details>
+</main>
+<script src="popup.js"></script>
+</body>
+</html>
