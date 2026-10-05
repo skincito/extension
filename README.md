@@ -15,10 +15,16 @@ Abrí `chrome://extensions`, activá **Developer mode**, elegí **Load unpacked*
 
 `npm run typecheck` y `npm test` verifican tipos y reglas de matching.
 
+### Integración con Skincito
+
+La API (`/api/extension/trades/*`) y el asistente de la web están en el repo `fedebogovic/skincito` (ver `docs/extension-integration.md` allí). Para que la web encuentre la extensión, copiá el ID que muestra `chrome://extensions` en `NEXT_PUBLIC_SKINCITO_EXTENSION_ID` de la web. Ese ID cambia entre instalaciones sin empaquetar salvo que fijes `key` en el manifest o publiques la extensión.
+
+Para probar en local con `npm run dev` de Skincito, usá `"apiBaseUrl": "http://localhost:3001/api"` y `"websiteOrigin": "http://localhost:3000"`; el build sólo acepta HTTP para `localhost`.
+
 ## Uso
 
 1. Iniciá sesión en Steam Community y en la web de Skincito.
-2. Abrí el popup: muestra SteamID, estado del token local y operaciones pendientes del endpoint `GET /extension/trades/pending`.
+2. Abrí el popup: muestra SteamID, estado del token local, si hay sesión de Skincito y operaciones pendientes del endpoint `GET /extension/trades/pending`. Desde la orden en la web, el vendedor puede usar los mismos botones.
 3. En una operación, **Abrir Steam** abre la Trade URL. El recuadro muestra comprador y Asset ID; **Agregar asset vendido** sólo busca `appid=730`, `contextid=2` y ese Asset ID.
 4. Si Steam devuelve un `tradeofferid`, la extensión registra la oferta. Cada tres minutos consulta ofertas e historial y reporta estados observados.
 
