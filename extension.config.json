@@ -1,0 +1,7 @@
+{
+  "apiBaseUrl": "https://api.skincito.com/api",
+  "websiteOrigin": "https://skincito.com",
+  "notarySessionUrl": "",
+  "notaryVerifierUrl": "",
+  "notaryProxyUrl": ""
+}

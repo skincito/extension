@@ -1,0 +1,26 @@
+import fs from 'node:fs/promises';
+import {build} from 'esbuild';
+
+const config = JSON.parse(await fs.readFile('extension.config.json', 'utf8'));
+for (const key of ['apiBaseUrl', 'websiteOrigin']) {
+  const u = new URL(config[key]);
+  if (u.protocol !== 'https:' || u.username || u.password) throw new Error(`${key} debe ser HTTPS`);
+}
+const api = new URL(config.apiBaseUrl);
+const web = new URL(config.websiteOrigin);
+const output = 'dist';
+await fs.rm(output, {recursive: true, force: true});
+await fs.mkdir(output, {recursive: true});
+const manifest = JSON.parse(await fs.readFile('manifest.json', 'utf8'));
+manifest.host_permissions.push(`${api.origin}/*`);
+manifest.externally_connectable.matches = [`${web.origin}/*`];
+await fs.writeFile(`${output}/manifest.json`, JSON.stringify(manifest, null, 2));
+await fs.copyFile('src/popup.html', `${output}/popup.html`);
+await fs.copyFile('src/offscreen.html', `${output}/offscreen.html`);
+const define = {'__SKINCITO_CONFIG__': JSON.stringify(config)};
+await build({entryPoints: {'background': 'src/background.ts', 'content': 'src/bridge/content.ts', 'page': 'src/bridge/page.ts', 'popup': 'src/popup.ts', 'offscreen': 'src/proof/offscreen.ts'},
+  outdir: output, bundle: true, format: 'iife', target: 'chrome109', define, logLevel: 'info'});
+await fs.cp('node_modules/@csfloat/tlsn-wasm', `${output}/vendor/tlsn-wasm`, {recursive: true});
+await build({entryPoints: {'notary-worker': 'src/proof/worker.ts'}, outdir: output, bundle: false, format: 'esm', target: 'chrome109', logLevel: 'info'});
+const worker = await fs.readFile(`${output}/notary-worker.js`, 'utf8');
+await fs.writeFile(`${output}/notary-worker.js`, worker.replaceAll('"@csfloat/tlsn-wasm"', '"./vendor/tlsn-wasm/tlsn_wasm.js"'));

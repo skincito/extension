@@ -1,0 +1,20 @@
+{
+  "name": "skincito-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@csfloat/tlsn-wasm": "0.1.0-alpha.15"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.313",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.10"
+  }
+}
