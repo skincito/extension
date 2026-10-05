@@ -1,18 +1,21 @@
 import {config} from './config';
 import type {PendingTrade, OfferReport} from './types';
 import type {ExternalRequest, InternalRequest} from './bridge/protocol';
-import {getPendingTrades, reportOffer} from './marketplace/client';
+import {getPendingTrades, reportOffer, SkincitoAuthError} from './marketplace/client';
 import {getSteamSession} from './steam/session';
 import {getAccessToken} from './steam/access-token';
 import {createOffer} from './steam/create-offer';
 import {monitorTrades} from './background/trade-monitor';
 
 const DEMO_KEY = 'demoPendingTrade';
-async function pending(): Promise<PendingTrade[]> {
-  const live = await getPendingTrades().catch(() => []);
+type SkincitoSession = 'ok' | 'unauthenticated' | 'error';
+async function pendingWithSession(): Promise<{trades: PendingTrade[]; session: SkincitoSession}> {
+  let session: SkincitoSession = 'ok';
+  const live = await getPendingTrades().catch(error => {session = error instanceof SkincitoAuthError ? 'unauthenticated' : 'error'; return []});
   const demo = (await chrome.storage.local.get(DEMO_KEY))[DEMO_KEY] as PendingTrade | undefined;
-  return demo ? [...live, demo] : live;
+  return {trades: demo ? [...live, demo] : live, session};
 }
+async function pending(): Promise<PendingTrade[]> {return (await pendingWithSession()).trades}
 async function findTrade(id: string): Promise<PendingTrade> {
   const trade = (await pending()).find(t => t.id === id);
   if (!trade) throw new Error('Operación no encontrada.');
@@ -30,7 +33,8 @@ async function handle(message: InternalRequest): Promise<unknown> {
     case 'GET_STATUS': {
       const session = await getSteamSession();
       const token = await getAccessToken(session.steamId);
-      return {steamId: session.steamId, hasAccessToken: !!token, trades: await pending()};
+      const {trades, session: skincitoSession} = await pendingWithSession();
+      return {steamId: session.steamId, hasAccessToken: !!token, skincitoSession, trades};
     }
     case 'GET_ACTIVE_TRADE': {
       const session = await getSteamSession();

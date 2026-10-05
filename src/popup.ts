@@ -9,8 +9,9 @@ function error(e: unknown): void {$('error').textContent = String(e)}
 async function refresh(): Promise<void> {
   $('error').textContent = '';
   try {
-    const data = await send<{steamId: string; hasAccessToken: boolean; trades: PendingTrade[]}>({type: 'GET_STATUS'});
-    $('status').textContent = `SteamID: ${data.steamId} · Access token: ${data.hasAccessToken ? 'obtenido' : 'sin obtener'}`;
+    const data = await send<{steamId: string; hasAccessToken: boolean; skincitoSession: 'ok' | 'unauthenticated' | 'error'; trades: PendingTrade[]}>({type: 'GET_STATUS'});
+    const skincito = data.skincitoSession === 'ok' ? 'conectado' : data.skincitoSession === 'unauthenticated' ? 'iniciá sesión en la web' : 'no responde';
+    $('status').textContent = `SteamID: ${data.steamId} · Access token: ${data.hasAccessToken ? 'obtenido' : 'sin obtener'} · Skincito: ${skincito}`;
     const demo = (await chrome.storage.local.get('demoOfferReport')).demoOfferReport as {steamTradeOfferId?: string} | undefined;
     if (demo?.steamTradeOfferId) $('status').textContent += ` · Oferta de prueba: ${demo.steamTradeOfferId}`;
     $('trades').replaceChildren();

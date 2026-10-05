@@ -25,10 +25,11 @@ export async function monitorTrades(force = false): Promise<void> {
     for (const trade of trades) {
       const offer = sent.find(o => o.tradeofferid === trade.steamTradeOfferId);
       const result = evaluateTrade(trade, history);
+      // Un rechazo del backend para una operación (p. ej. 409 si cambió de estado) no frena al resto.
       await reportStatus(trade.id, {marketplaceTradeId: trade.id, steamTradeOfferId: offer?.tradeofferid,
         offerState: offer?.trade_offer_state, historyTradeId: result.trade?.tradeid,
         historyStatus: result.trade?.status, candidate: result.candidate, rolledBack: result.rolledBack,
-        checkedAt: new Date().toISOString()});
+        checkedAt: new Date().toISOString()}).catch(error => console.error('Skincito steam-status', trade.id, error));
       if ((result.candidate || result.rolledBack) && result.trade && config.notarySessionUrl && config.notaryVerifierUrl &&
           Date.now() - (attempts[trade.id] ?? 0) >= 6 * 60 * 60_000) {
         attempts[trade.id] = Date.now();

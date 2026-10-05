@@ -2,9 +2,11 @@ import fs from 'node:fs/promises';
 import {build} from 'esbuild';
 
 const config = JSON.parse(await fs.readFile('extension.config.json', 'utf8'));
+// HTTP sólo se admite contra localhost, para probar con `npm run dev` de Skincito.
+const isLocal = u => u.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(u.hostname);
 for (const key of ['apiBaseUrl', 'websiteOrigin']) {
   const u = new URL(config[key]);
-  if (u.protocol !== 'https:' || u.username || u.password) throw new Error(`${key} debe ser HTTPS`);
+  if ((u.protocol !== 'https:' && !isLocal(u)) || u.username || u.password) throw new Error(`${key} debe ser HTTPS (o http://localhost)`);
 }
 const api = new URL(config.apiBaseUrl);
 const web = new URL(config.websiteOrigin);

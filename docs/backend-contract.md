@@ -1,10 +1,10 @@
 # Contrato propuesto para `https://api.skincito.com/api`
 
-La URL base se configura en `extension.config.json`. Todos los endpoints requieren sesión de vendedor autenticada con cookie `HttpOnly; Secure; SameSite=None` si la extensión hace requests desde `chrome-extension://`. El backend debe permitir ese origen mediante CORS con credenciales; el ID de extensión cambia entre builds sin clave fija. Una alternativa más robusta es un token de sesión de alcance limitado emitido por la web. Nunca aceptar el Steam access token como autenticación de Skincito.
+Implementado en `fedebogovic/skincito` (`apps/api/src/modules/extension`). La URL base se configura en `extension.config.json`. Todos los endpoints requieren sesión de vendedor autenticada con cookie `HttpOnly; Secure; SameSite=None` si la extensión hace requests desde `chrome-extension://`. El backend debe permitir ese origen mediante CORS con credenciales; el ID de extensión cambia entre builds sin clave fija. Una alternativa más robusta es un token de sesión de alcance limitado emitido por la web. Nunca aceptar el Steam access token como autenticación de Skincito.
 
 ## `GET /extension/trades/pending`
 
-Respuesta `200`: `{ "trades": PendingTrade[] }`. `PendingTrade`: `id`, `sellerSteamId`, `buyerSteamId`, `assetId`, `marketHashName`, `acceptedAt` ISO-8601, `buyerTradeUrl`; opcionales `steamTradeOfferId`, `proofAcceptedAt`. El backend devuelve sólo órdenes del vendedor autenticado. Si no hay sesión, `401`.
+Respuesta `200`: `{ "trades": PendingTrade[] }`. `PendingTrade`: `id`, `sellerSteamId`, `buyerSteamId`, `assetId`, `marketHashName`, `acceptedAt` ISO-8601, `buyerTradeUrl`; opcionales `steamTradeOfferId`, `proofAcceptedAt`. El backend devuelve sólo órdenes del vendedor autenticado. Si no hay sesión, `401` (Skincito responde `403`; la extensión trata ambos como "sin sesión").
 
 ## `POST /extension/trades/{id}/offer`
 
