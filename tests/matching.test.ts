@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {evaluateTrade, findBlockingOffer} from '../src/marketplace/matching';
+import {evaluateTrade, findBlockingOffer, pickActiveTrade} from '../src/marketplace/matching';
 import type {PendingTrade, SteamHistoryTrade, SteamOffer} from '../src/types';
 const A = '3899876543210123456', B = '76561198000000002', S = '76561198000000001';
 const order: PendingTrade = {id: 'sale', sellerSteamId: S, buyerSteamId: B, assetId: A, marketHashName: 'AK-47 | Redline (Field-Tested)', acceptedAt: '2026-10-04T06:00:00Z', buyerTradeUrl: 'https://steamcommunity.com/tradeoffer/new/?partner=397343274&token=test'};
@@ -23,4 +23,12 @@ describe('Blocking offers', () => {
   it('ignores declined, canceled and expired offers', () => {for (const state of [5, 6, 7]) expect(findBlockingOffer(order, [{...offer, trade_offer_state: state}])).toBeUndefined()});
   it('ignores offers to another user or with another asset', () => {expect(findBlockingOffer(order, [{...offer, otherSteamId: S}])).toBeUndefined(); expect(findBlockingOffer(order, [{...offer, items_to_give: [{appid: 730, assetid: '999'}]}])).toBeUndefined()});
   it('matches the registered offer by ID when the HTML fallback has no items', () => expect(findBlockingOffer({...order, steamTradeOfferId: '555'}, [{...offer, otherSteamId: '', items_to_give: []}])).toBeDefined());
+});
+describe('Active trade selection with several sales to the same buyer', () => {
+  const done = {...order, id: 'done', blockingOffer: {id: '555', state: 3}}, next = {...order, id: 'next', assetId: '999'}, other = {...order, id: 'other', assetId: '888'};
+  it('skips a sale already delivered and offers the next one', () => expect(pickActiveTrade([done, next])?.id).toBe('next'));
+  it('prefers the sale opened from Skincito', () => expect(pickActiveTrade([done, next, other], 'other')?.id).toBe('other'));
+  it('moves on when the opened sale already has an offer', () => expect(pickActiveTrade([done, next], 'done')?.id).toBe('next'));
+  it('shows the block only when every sale has an offer', () => expect(pickActiveTrade([done, {...next, blockingOffer: {id: '556', state: 2}}], 'done')?.id).toBe('done'));
+  it('returns nothing without sales', () => expect(pickActiveTrade([])).toBeUndefined());
 });

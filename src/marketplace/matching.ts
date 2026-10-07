@@ -22,3 +22,12 @@ export function findBlockingOffer(order: PendingTrade, sent: SteamOffer[]): Stea
   return sent.find(o => BLOCKING_OFFER_STATES.includes(o.trade_offer_state) && (o.tradeofferid === order.steamTradeOfferId ||
     (o.otherSteamId === order.buyerSteamId && o.items_to_give.some(a => a.appid === 730 && a.assetid === order.assetId))));
 }
+/**
+ * Elige qué venta asistir en la página de oferta. Varias ventas al mismo comprador comparten trade URL:
+ * se prefiere la que se abrió desde Skincito, después la primera que todavía no tiene oferta, y sólo
+ * si todas ya tienen una se muestra el bloqueo.
+ */
+export function pickActiveTrade<T extends PendingTrade & {blockingOffer?: unknown}>(trades: T[], preferredId?: string): T | undefined {
+  const preferred = trades.find(t => t.id === preferredId);
+  return (preferred && !preferred.blockingOffer ? preferred : undefined) ?? trades.find(t => !t.blockingOffer) ?? preferred ?? trades[0];
+}
