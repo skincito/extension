@@ -89,7 +89,17 @@ chrome.runtime.onMessageExternal.addListener((message: ExternalRequest, sender, 
   handle(operation).then(data => sendResponse({ok: true, data})).catch(error => sendResponse({ok: false, error: String(error)}));
   return true;
 });
-chrome.alarms.onAlarm.addListener(alarm => {if (alarm.name === 'skincito-monitor') void monitorTrades().catch(console.error)});
-chrome.runtime.onInstalled.addListener(() => {void chrome.alarms.create('skincito-monitor', {periodInMinutes: 3, delayInMinutes: 1})});
-void chrome.alarms.get('skincito-monitor').then(a => {if (!a) return chrome.alarms.create('skincito-monitor', {periodInMinutes: 3, delayInMinutes: 1})});
+const MONITOR_ALARM = 'skincito-monitor';
+/** Crea la alarma si falta, tiene otro período o quedó a más de 10 minutos (p. ej. por un reloj del sistema mal puesto). */
+async function ensureMonitorAlarm(): Promise<void> {
+  const alarm = await chrome.alarms.get(MONITOR_ALARM);
+  if (!alarm || alarm.periodInMinutes !== 3 || alarm.scheduledTime > Date.now() + 10 * 60_000)
+    await chrome.alarms.create(MONITOR_ALARM, {periodInMinutes: 3, delayInMinutes: 1});
+}
+// La alarma ya está espaciada: no pasa por el freno de 3 minutos, que es para los arranques del service worker.
+chrome.alarms.onAlarm.addListener(alarm => {if (alarm.name === MONITOR_ALARM) void monitorTrades(true).catch(console.error)});
+chrome.runtime.onInstalled.addListener(() => {void ensureMonitorAlarm()});
+// Despierta el service worker al abrir Chrome; las alarmas pueden no sobrevivir al reinicio.
+chrome.runtime.onStartup.addListener(() => {void ensureMonitorAlarm()});
+void ensureMonitorAlarm();
 void monitorTrades().catch(console.error);
