@@ -32,7 +32,8 @@ Para probar en local con `npm run dev` de Skincito, usá `"apiBaseUrl": "http://
 ## Uso
 
 1. Iniciá sesión en Steam Community y en la web de Skincito.
-2. Abrí el popup: muestra si hay sesión de Steam (con el SteamID) y de Skincito, y las operaciones pendientes del endpoint `GET /extension/trades/pending`. Desde la orden en la web, el vendedor puede usar los mismos botones.
+2. Abrí el popup: muestra si hay sesión de Steam (con el SteamID) y de Skincito, y las operaciones pendientes del endpoint `GET /extension/trades/pending`.
+   Desde la orden en la web, **Entregar con la extensión de Skincito** abre una ventana de la extensión, al estilo MetaMask, con el item, tu cuenta de Steam y el comprador. Al tocar **Aprobar**, la extensión crea la oferta sólo con el asset vendido y la registra en Skincito; cerrar la ventana o tocar **Rechazar** cancela el pedido.
 3. En una operación, **Abrir en Steam** abre la Trade URL. Un panel arriba del área de intercambio muestra el item, el comprador y el Asset ID; **Agregar item vendido** sólo busca `appid=730`, `contextid=2` y ese Asset ID. Si ya hay una oferta enviada para esa venta (activa, aceptada, esperando confirmación en el celular o en escrow), la extensión lo avisa y no deja agregar el asset ni crear otra oferta directa. También detecta ofertas armadas a mano al mismo comprador con el mismo asset.
 4. Si Steam devuelve un `tradeofferid`, la extensión registra la oferta. Cada tres minutos consulta ofertas e historial y reporta estados observados.
 

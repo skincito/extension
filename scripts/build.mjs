@@ -35,10 +35,10 @@ if (firefox) {
     data_collection_permissions: {required: ['websiteActivity', 'websiteContent']}}};
 }
 await fs.writeFile(`${output}/manifest.json`, JSON.stringify(manifest, null, 2));
-await fs.copyFile('src/popup.html', `${output}/popup.html`);
+for (const page of ['popup.html', 'approve.html']) await fs.copyFile(`src/${page}`, `${output}/${page}`);
 if (!firefox) await fs.copyFile('src/offscreen.html', `${output}/offscreen.html`);
 const define = {'__SKINCITO_CONFIG__': JSON.stringify(config)};
-const entryPoints = {'background': 'src/background.ts', 'content': 'src/bridge/content.ts', 'page': 'src/bridge/page.ts', 'popup': 'src/popup.ts',
+const entryPoints = {'background': 'src/background.ts', 'content': 'src/bridge/content.ts', 'page': 'src/bridge/page.ts', 'popup': 'src/popup.ts', 'approve': 'src/approve.ts',
   ...(firefox ? {'web-bridge': 'src/bridge/web.ts'} : {'offscreen': 'src/proof/offscreen.ts'})};
 await build({entryPoints, outdir: output, bundle: true, format: 'iife', target, define, logLevel: 'info'});
 await fs.cp('node_modules/@csfloat/tlsn-wasm', `${output}/vendor/tlsn-wasm`, {recursive: true});

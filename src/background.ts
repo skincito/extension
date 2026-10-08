@@ -1,6 +1,6 @@
 import {config} from './config';
 import type {ActiveTrade, PendingTrade, OfferReport} from './types';
-import type {ExternalRequest, InternalRequest} from './bridge/protocol';
+import type {ApprovalView, ExternalRequest, InternalRequest} from './bridge/protocol';
 import {getPendingTrades, reportOffer, SkincitoAuthError} from './marketplace/client';
 import {getSteamSession} from './steam/session';
 import {getAccessToken} from './steam/access-token';
@@ -8,6 +8,7 @@ import {createOffer} from './steam/create-offer';
 import {monitorTrades} from './background/trade-monitor';
 import {getTradeOffers} from './steam/trade-offers';
 import {findBlockingOffer, OFFER_STATE_LABELS} from './marketplace/matching';
+import {approve, getApproval, reject, requestApproval} from './background/approval';
 
 const DEMO_KEY = 'demoPendingTrade';
 const OPENED_TABS = 'openedTradeTabs';
@@ -46,7 +47,25 @@ async function openTrade(id: string): Promise<{opened: true}> {
   }
   return {opened: true};
 }
-async function handle(message: InternalRequest, tabId?: number): Promise<unknown> {
+/** Crea la oferta con sólo el asset vendido y la registra en Skincito. */
+async function deliver(tradeId: string): Promise<OfferReport> {
+  const trade = await findTrade(tradeId);
+  await assertNoBlockingOffer(trade);
+  const report = await createOffer(trade);
+  const demo = (await chrome.storage.local.get(DEMO_KEY))[DEMO_KEY] as PendingTrade | undefined;
+  if (demo?.id === trade.id) await chrome.storage.local.set({demoOfferReport: report});
+  else await reportOffer(trade.id, report);
+  return report;
+}
+async function approvalView(requestId: string): Promise<ApprovalView> {
+  const {tradeId, origin} = getApproval(requestId);
+  const trade = await findTrade(tradeId);
+  const {steamId} = await getSteamSession();
+  // Las ofertas enviadas sólo se pueden leer con la cuenta vendedora; con otra cuenta la ventana ya avisa y no deja aprobar.
+  const [checked] = steamId === trade.sellerSteamId ? await withBlockingOffers([trade], steamId) : [trade];
+  return {trade: checked ?? trade, steamId, origin};
+}
+async function handle(message: InternalRequest, tabId?: number, origin = ''): Promise<unknown> {
   switch (message.type) {
     case 'GET_STATUS': {
       const session = await getSteamSession();
@@ -61,15 +80,17 @@ async function handle(message: InternalRequest, tabId?: number): Promise<unknown
       return {trades, preferredTradeId: tabId === undefined ? undefined : opened[tabId]};
     }
     case 'OPEN_TRADE': return openTrade(message.tradeId);
-    case 'CREATE_OFFER': {
-      const trade = await findTrade(message.tradeId);
-      await assertNoBlockingOffer(trade);
-      const report = await createOffer(trade);
-      const demo = (await chrome.storage.local.get(DEMO_KEY))[DEMO_KEY] as PendingTrade | undefined;
-      if (demo?.id === trade.id) await chrome.storage.local.set({demoOfferReport: report});
-      else await reportOffer(trade.id, report);
-      return report;
+    case 'CREATE_OFFER': return deliver(message.tradeId);
+    case 'REQUEST_DELIVERY': {
+      await findTrade(message.tradeId);
+      return requestApproval(message.tradeId, origin);
     }
+    case 'GET_APPROVAL': return approvalView(message.requestId);
+    // La ventana avisa cada tanto: mantiene vivo el service worker mientras el vendedor decide.
+    case 'PING_APPROVAL': return getApproval(message.requestId);
+    case 'RESOLVE_APPROVAL':
+      if (message.approved) return approve(message.requestId, deliver);
+      return reject(message.requestId);
     case 'PAGE_OFFER': {
       const r: OfferReport = message.report;
       const t = await findTrade(r.marketplaceTradeId);
@@ -87,11 +108,10 @@ function fromWebsite(url: string | undefined): boolean {
 /** Lo que la web puede pedir: lo mismo llega por externally_connectable (Chrome) o por web-bridge.js (Firefox). */
 function externalOperation(message: ExternalRequest): InternalRequest | undefined {
   return message?.type === 'SKINCITO_GET_STATUS' ? {type: 'GET_STATUS'} :
-    message?.type === 'SKINCITO_OPEN_TRADE' ? {type: 'OPEN_TRADE', tradeId: message.tradeId} :
-    message?.type === 'SKINCITO_CREATE_OFFER' ? {type: 'CREATE_OFFER', tradeId: message.tradeId} : undefined;
+    message?.type === 'SKINCITO_REQUEST_DELIVERY' && typeof message.tradeId === 'string' ? {type: 'REQUEST_DELIVERY', tradeId: message.tradeId} : undefined;
 }
-function respond(operation: InternalRequest, sendResponse: (response: unknown) => void, tabId?: number): true {
-  handle(operation, tabId).then(data => sendResponse({ok: true, data})).catch(error => sendResponse({ok: false, error: String(error)}));
+function respond(operation: InternalRequest, sendResponse: (response: unknown) => void, tabId?: number, origin?: string): true {
+  handle(operation, tabId, origin).then(data => sendResponse({ok: true, data})).catch(error => sendResponse({ok: false, error: String(error)}));
   return true;
 }
 chrome.runtime.onMessage.addListener((message: InternalRequest, sender, sendResponse) => {
@@ -100,16 +120,20 @@ chrome.runtime.onMessage.addListener((message: InternalRequest, sender, sendResp
     // Sólo desde web-bridge.js corriendo en una pestaña de la web de Skincito.
     if (sender.id !== chrome.runtime.id || !sender.tab || !fromWebsite(sender.url)) return;
     const operation = externalOperation(message.request);
-    return operation ? respond(operation, sendResponse) : undefined;
+    return operation ? respond(operation, sendResponse, undefined, new URL(sender.url!).origin) : undefined;
   }
+  if (sender.id !== chrome.runtime.id) return;
+  const fromExtensionPage = !!sender.url?.startsWith(chrome.runtime.getURL(''));
+  // Aprobar una entrega sólo desde la ventana de la extensión, nunca desde un content script.
+  if (['GET_APPROVAL', 'PING_APPROVAL', 'RESOLVE_APPROVAL'].includes(message?.type)) return fromExtensionPage ? respond(message, sendResponse) : undefined;
   if (!['GET_STATUS', 'GET_ACTIVE_TRADE', 'OPEN_TRADE', 'CREATE_OFFER', 'PAGE_OFFER'].includes(message?.type)) return;
-  if (sender.id !== chrome.runtime.id || (sender.url && !sender.url.startsWith('https://steamcommunity.com/') && !sender.url.startsWith(chrome.runtime.getURL('')))) return;
+  if (sender.url && !sender.url.startsWith('https://steamcommunity.com/') && !fromExtensionPage) return;
   return respond(message, sendResponse, sender.tab?.id);
 });
 chrome.runtime.onMessageExternal?.addListener((message: ExternalRequest, sender, sendResponse) => {
   if (!sender.origin || !fromWebsite(sender.url) || !config.websiteOrigins.includes(sender.origin)) return;
   const operation = externalOperation(message);
-  return operation ? respond(operation, sendResponse) : undefined;
+  return operation ? respond(operation, sendResponse, undefined, sender.origin) : undefined;
 });
 chrome.tabs.onRemoved.addListener(tabId => {void chrome.storage.session.get(OPENED_TABS).then(r => {
   const opened = r[OPENED_TABS] as Record<string, string> | undefined;
