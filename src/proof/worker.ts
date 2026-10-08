@@ -17,7 +17,7 @@ class SocketChannel implements IoChannel {
   async close(): Promise<void> {this.socket.close()}
 }
 function wsUrl(url: string): string {return url.replace(/^https:/, 'wss:')}
-async function session(url: string, maxRecvData: number, maxSentData: number): Promise<{socket: WebSocket; id: string; completion: Promise<string>}> {
+async function session(url: string, ticket: string, maxRecvData: number, maxSentData: number): Promise<{socket: WebSocket; id: string; completion: Promise<string>}> {
   const socket = new WebSocket(wsUrl(url));
   await new Promise<void>((resolve, reject) => {socket.onopen = () => resolve(); socket.onerror = () => reject(new Error('No se pudo abrir sesión TLSNotary.'))});
   let registered!: (id: string) => void; let completed!: (proof: string) => void; let failed!: (error: Error) => void;
@@ -27,10 +27,11 @@ async function session(url: string, maxRecvData: number, maxSentData: number): P
     if (m.type === 'session_registered' && m.sessionId) registered(m.sessionId);
     if (m.type === 'session_completed' && m.payload) completed(m.payload);
     if (m.type === 'error') failed(new Error(m.message || 'TLSNotary falló.'))};
-  socket.send(JSON.stringify({type: 'register', maxRecvData, maxSentData}));
+  socket.send(JSON.stringify({type: 'register', maxRecvData, maxSentData, ticket}));
   return {socket, id: await Promise.race([id, new Promise<string>((_, reject) => setTimeout(() => reject(new Error('TLSNotary session timeout')), 10_000))]), completion};
 }
-async function prove(message: {url: string; token: string; sessionUrl: string; verifierUrl: string}): Promise<string> {
+type ProveMessage = {url: string; token: string; ticket: string; sessionUrl: string; verifierUrl: string};
+async function prove(message: ProveMessage): Promise<string> {
   // La wasm usa memoria compartida entre hilos; sin SharedArrayBuffer (página sin aislamiento cross-origin) no puede arrancar.
   if (typeof SharedArrayBuffer === 'undefined') throw new Error('El navegador no habilita SharedArrayBuffer en la extensión; TLSNotary no puede correr.');
   await initWasm();
@@ -41,7 +42,7 @@ async function prove(message: {url: string; token: string; sessionUrl: string; v
   const body = await estimate.arrayBuffer();
   const maxRecvData = Math.max(50_000, body.byteLength * 4 + 16_384);
   const maxSentData = new TextEncoder().encode(message.url).length + 4096;
-  const registration = await session(message.sessionUrl, maxRecvData, maxSentData);
+  const registration = await session(message.sessionUrl, message.ticket, maxRecvData, maxSentData);
   const verifier = await SocketChannel.connect(`${wsUrl(message.verifierUrl)}?sessionId=${encodeURIComponent(registration.id)}`);
   try {
     const prover = new Prover({server_name: 'api.steampowered.com', mode: 'Proxy', max_recv_data: maxRecvData, max_sent_data: maxSentData,
@@ -51,8 +52,11 @@ async function prove(message: {url: string; token: string; sessionUrl: string; v
     await prover.send_request(undefined, {uri: message.url, method: 'GET', headers, body: undefined});
     const transcript = await prover.transcript();
     const sent = new TextDecoder().decode(new Uint8Array(transcript.sent));
-    const secret = message.token; const hidden: {start: number; end: number}[] = [];
-    let index = 0; while ((index = sent.indexOf(secret, index)) >= 0) {hidden.push({start: index, end: index + secret.length}); index += secret.length}
+    // Sólo se oculta la firma del JWT: header y payload le muestran al notario de qué cuenta es el
+    // token, y sin la firma no sirve para nada.
+    const secret = message.token; const signature = secret.lastIndexOf('.') + 1; const hidden: {start: number; end: number}[] = [];
+    if (signature === 0) throw new Error('El access token no es un JWT; no se enviará la prueba.');
+    let index = 0; while ((index = sent.indexOf(secret, index)) >= 0) {hidden.push({start: index + signature, end: index + secret.length}); index += secret.length}
     if (!hidden.length) throw new Error('El token no aparece en el transcript; no se enviará la prueba.');
     const ranges: {start: number; end: number}[] = []; let start = 0;
     for (const h of hidden) {if (h.start > start) ranges.push({start, end: h.start}); start = h.end}
@@ -62,6 +66,6 @@ async function prove(message: {url: string; token: string; sessionUrl: string; v
     return await registration.completion;
   } finally {verifier.close(); registration.socket.close()}
 }
-self.onmessage = (event: MessageEvent<{url: string; token: string; sessionUrl: string; verifierUrl: string}>) => {
+self.onmessage = (event: MessageEvent<ProveMessage>) => {
   void prove(event.data).then(proof => self.postMessage({ok: true, proof})).catch(error => self.postMessage({ok: false, error: String(error)}));
 };

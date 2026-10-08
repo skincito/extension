@@ -14,4 +14,6 @@ export async function getPendingTrades(): Promise<PendingTrade[]> {
 }
 export function reportOffer(tradeId: string, report: OfferReport): Promise<{accepted: boolean}> {return api(`/extension/trades/${encodeURIComponent(tradeId)}/offer`, {method: 'POST', body: JSON.stringify(report)})}
 export function reportStatus(tradeId: string, report: StatusReport): Promise<{accepted: boolean}> {return api(`/extension/trades/${encodeURIComponent(tradeId)}/steam-status`, {method: 'POST', body: JSON.stringify(report)})}
+/** Ticket de un solo uso para abrir una sesión en el notario de Skincito para esta operación. */
+export async function getNotaryTicket(tradeId: string): Promise<string> {return (await api<{ticket: string}>(`/extension/trades/${encodeURIComponent(tradeId)}/notary-ticket`, {method: 'POST'})).ticket}
 export function submitProof(tradeId: string, proof: ProofSubmission): Promise<{accepted: boolean}> {return api(`/extension/trades/${encodeURIComponent(tradeId)}/proof`, {method: 'POST', body: JSON.stringify(proof)})}

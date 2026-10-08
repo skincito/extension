@@ -13,6 +13,8 @@ export async function monitorTrades(force = false): Promise<void> {
   const last = ((await chrome.storage.local.get(LAST_CHECK))[LAST_CHECK] as number | undefined) ?? 0;
   if (!force && Date.now() - last < 3 * 60_000) return;
   running = true;
+  // Se marca al empezar: si se marcara al terminar, la alarma siguiente caería dentro de los 3 minutos.
+  await chrome.storage.local.set({[LAST_CHECK]: Date.now()});
   try {
     const pending = await getPendingTrades();
     if (!pending.length) return;
@@ -40,5 +42,5 @@ export async function monitorTrades(force = false): Promise<void> {
         try {await proveTrade(trade, result.trade)} catch (error) {console.error('TLSNotary proof failed', error)}
       }
     }
-  } finally {running = false; await chrome.storage.local.set({[LAST_CHECK]: Date.now()})}
+  } finally {running = false}
 }

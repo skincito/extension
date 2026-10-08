@@ -1,4 +1,4 @@
-export type ProveMessage = {url: string; token: string; sessionUrl: string; verifierUrl: string};
+export type ProveMessage = {url: string; token: string; ticket: string; sessionUrl: string; verifierUrl: string};
 export type ProveResult = {ok: boolean; proof?: string; error?: string};
 /** Corre la prueba en notary-worker.js. En Chrome se llama desde el documento offscreen; en Firefox, desde la página de fondo. */
 export function runProofWorker(message: ProveMessage): Promise<ProveResult> {
