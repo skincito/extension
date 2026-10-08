@@ -15,3 +15,5 @@ export interface OfferReport {marketplaceTradeId: string; steamTradeOfferId: str
 export interface SendOfferResponse {tradeofferid?: string; strError?: string; needs_mobile_confirmation?: boolean; needs_email_confirmation?: boolean}
 export interface StatusReport {marketplaceTradeId: string; steamTradeOfferId?: string; offerState?: number; historyTradeId?: string; historyStatus?: number; newAssetId?: string; candidate: boolean; rolledBack: boolean; checkedAt: string}
 export interface ProofSubmission {marketplaceTradeId: string; steamTradeId: string; proof: string; proofFormat: 'skincito-notary-v1'}
+/** Respuesta de la API a una prueba: RECEIVED si la API no tiene notario configurado. */
+export interface ProofVerdict {accepted: boolean; status?: 'VERIFIED' | 'REJECTED' | 'RECEIVED'; reason?: string}

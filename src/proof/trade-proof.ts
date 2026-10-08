@@ -1,9 +1,9 @@
 import {config} from '../config';
-import type {PendingTrade, SteamHistoryTrade} from '../types';
+import type {PendingTrade, ProofVerdict, SteamHistoryTrade} from '../types';
 import {getAccessToken} from '../steam/access-token';
 import {getNotaryTicket, submitProof} from '../marketplace/client';
 import {runProofWorker, type ProveMessage, type ProveResult} from './run-worker';
-export async function proveTrade(trade: PendingTrade, history: SteamHistoryTrade): Promise<void> {
+export async function proveTrade(trade: PendingTrade, history: SteamHistoryTrade): Promise<ProofVerdict> {
   if (!config.notarySessionUrl || !config.notaryVerifierUrl) throw new Error('Configurá el servicio TLSNotary antes de generar pruebas.');
   const token = await getAccessToken(trade.sellerSteamId);
   const url = new URL('https://api.steampowered.com/IEconService/GetTradeHistory/v1/');
@@ -13,7 +13,7 @@ export async function proveTrade(trade: PendingTrade, history: SteamHistoryTrade
   const ticket = await getNotaryTicket(trade.id);
   const response = await prove({url: url.href, token, ticket, sessionUrl: config.notarySessionUrl, verifierUrl: config.notaryVerifierUrl});
   if (!response?.ok || typeof response.proof !== 'string') throw new Error(response?.error || 'TLSNotary no devolvió una prueba.');
-  await submitProof(trade.id, {marketplaceTradeId: trade.id, steamTradeId: history.tradeid, proof: response.proof, proofFormat: 'skincito-notary-v1'});
+  return submitProof(trade.id, {marketplaceTradeId: trade.id, steamTradeId: history.tradeid, proof: response.proof, proofFormat: 'skincito-notary-v1'});
 }
 /** Chrome no permite workers en el service worker y usa un documento offscreen; Firefox no tiene offscreen pero su página de fondo sí crea workers. */
 async function prove(message: ProveMessage): Promise<ProveResult> {

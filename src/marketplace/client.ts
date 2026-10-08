@@ -1,5 +1,5 @@
 import {config} from '../config';
-import type {OfferReport, PendingTrade, ProofSubmission, StatusReport} from '../types';
+import type {OfferReport, PendingTrade, ProofSubmission, ProofVerdict, StatusReport} from '../types';
 /** Sin sesión de Skincito: la API responde 401/403 (DevAuthGuard usa 403). */
 export class SkincitoAuthError extends Error {constructor(status: number) {super(`Iniciá sesión en Skincito (${status}).`)}}
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -16,4 +16,4 @@ export function reportOffer(tradeId: string, report: OfferReport): Promise<{acce
 export function reportStatus(tradeId: string, report: StatusReport): Promise<{accepted: boolean}> {return api(`/extension/trades/${encodeURIComponent(tradeId)}/steam-status`, {method: 'POST', body: JSON.stringify(report)})}
 /** Ticket de un solo uso para abrir una sesión en el notario de Skincito para esta operación. */
 export async function getNotaryTicket(tradeId: string): Promise<string> {return (await api<{ticket: string}>(`/extension/trades/${encodeURIComponent(tradeId)}/notary-ticket`, {method: 'POST'})).ticket}
-export function submitProof(tradeId: string, proof: ProofSubmission): Promise<{accepted: boolean}> {return api(`/extension/trades/${encodeURIComponent(tradeId)}/proof`, {method: 'POST', body: JSON.stringify(proof)})}
+export function submitProof(tradeId: string, proof: ProofSubmission): Promise<ProofVerdict> {return api(`/extension/trades/${encodeURIComponent(tradeId)}/proof`, {method: 'POST', body: JSON.stringify(proof)})}

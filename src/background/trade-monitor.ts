@@ -5,8 +5,20 @@ import {getTradeHistory} from '../steam/trade-history';
 import {evaluateTrade} from '../marketplace/matching';
 import {config} from '../config';
 import {proveTrade} from '../proof/trade-proof';
+import type {SteamHistoryTrade} from '../types';
 const LAST_CHECK = 'lastTradeCheck';
-const PROOF_ATTEMPTS = 'proofAttempts';
+/** Antes se reintentaba la prueba recién a las 6 horas; queda solo para borrarlo. */
+const LEGACY_PROOF_ATTEMPTS = 'proofAttempts';
+/**
+ * Resultado de cada prueba ya enviada, por operación y estado del trade en Steam. Una prueba
+ * verificada o rechazada no se repite mientras el trade siga igual; un error (red, API, notario)
+ * no se guarda y se reintenta en la próxima vuelta (3 minutos). Una prueba aceptada además la
+ * informa la API (proofAcceptedAt) y la operación deja de ser candidata.
+ */
+const PROOF_OUTCOMES = 'proofOutcomes';
+type ProofOutcomes = Record<string, {status: string; at: number}>;
+const proofKey = (tradeId: string, trade: SteamHistoryTrade, rolledBack: boolean) =>
+  `${tradeId}:${trade.tradeid}:${trade.status}:${rolledBack ? 'rollback' : 'delivery'}`;
 let running = false;
 export async function monitorTrades(force = false): Promise<void> {
   if (running) return;
@@ -23,7 +35,11 @@ export async function monitorTrades(force = false): Promise<void> {
     if (!trades.length) return;
     const {sent} = await getTradeOffers(session.steamId);
     const history = await getTradeHistory(session.steamId);
-    const attempts = ((await chrome.storage.local.get(PROOF_ATTEMPTS))[PROOF_ATTEMPTS] as Record<string, number> | undefined) ?? {};
+    const stored = ((await chrome.storage.local.get(PROOF_OUTCOMES))[PROOF_OUTCOMES] as ProofOutcomes | undefined) ?? {};
+    // Sólo se conservan los resultados de operaciones que siguen pendientes.
+    const outcomes: ProofOutcomes = Object.fromEntries(
+      Object.entries(stored).filter(([key]) => trades.some(t => key.startsWith(`${t.id}:`))));
+    await chrome.storage.local.remove(LEGACY_PROOF_ATTEMPTS);
     for (const trade of trades) {
       const offer = sent.find(o => o.tradeofferid === trade.steamTradeOfferId);
       const result = evaluateTrade(trade, history);
@@ -35,12 +51,16 @@ export async function monitorTrades(force = false): Promise<void> {
         newAssetId: result.trade?.assets_given.find(a => a.appid === 730 && a.assetid === trade.assetId)?.new_assetid,
         candidate: result.candidate, rolledBack: result.rolledBack,
         checkedAt: new Date().toISOString()}).catch(error => console.error('Skincito steam-status', trade.id, error));
-      if ((result.candidate || result.rolledBack) && result.trade && config.notarySessionUrl && config.notaryVerifierUrl &&
-          Date.now() - (attempts[trade.id] ?? 0) >= 6 * 60 * 60_000) {
-        attempts[trade.id] = Date.now();
-        await chrome.storage.local.set({[PROOF_ATTEMPTS]: attempts});
-        try {await proveTrade(trade, result.trade)} catch (error) {console.error('TLSNotary proof failed', error)}
+      if ((result.candidate || result.rolledBack) && result.trade && config.notarySessionUrl && config.notaryVerifierUrl) {
+        const key = proofKey(trade.id, result.trade, result.rolledBack);
+        if (outcomes[key]) continue;
+        try {
+          const verdict = await proveTrade(trade, result.trade);
+          outcomes[key] = {status: verdict.status ?? 'RECEIVED', at: Date.now()};
+          if (verdict.status === 'REJECTED') console.warn('TLSNotary proof rejected', trade.id, verdict.reason);
+        } catch (error) {console.error('TLSNotary proof failed', error)}
       }
     }
+    await chrome.storage.local.set({[PROOF_OUTCOMES]: outcomes});
   } finally {running = false}
 }
