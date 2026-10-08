@@ -11,11 +11,13 @@ const LAST_CHECK = 'lastTradeCheck';
 const LEGACY_PROOF_ATTEMPTS = 'proofAttempts';
 /**
  * Resultado de cada prueba ya enviada, por operación y estado del trade en Steam. Una prueba
- * verificada o rechazada no se repite mientras el trade siga igual; un error (red, API, notario)
+ * verificada no se repite mientras el trade siga igual, una rechazada se reintenta a los 30 minutos; un error (red, API, notario)
  * no se guarda y se reintenta en la próxima vuelta (3 minutos). Una prueba aceptada además la
  * informa la API (proofAcceptedAt) y la operación deja de ser candidata.
  */
 const PROOF_OUTCOMES = 'proofOutcomes';
+/** Un rechazo se vuelve a intentar pasado este tiempo: la API puede haber cambiado sus reglas. */
+const REJECTED_RETRY_MS = 30 * 60_000;
 type ProofOutcomes = Record<string, {status: string; at: number}>;
 const proofKey = (tradeId: string, trade: SteamHistoryTrade, rolledBack: boolean) =>
   `${tradeId}:${trade.tradeid}:${trade.status}:${rolledBack ? 'rollback' : 'delivery'}`;
@@ -53,7 +55,8 @@ export async function monitorTrades(force = false): Promise<void> {
         checkedAt: new Date().toISOString()}).catch(error => console.error('Skincito steam-status', trade.id, error));
       if ((result.candidate || result.rolledBack) && result.trade && config.notarySessionUrl && config.notaryVerifierUrl) {
         const key = proofKey(trade.id, result.trade, result.rolledBack);
-        if (outcomes[key]) continue;
+        const previous = outcomes[key];
+        if (previous && (previous.status !== 'REJECTED' || Date.now() - previous.at < REJECTED_RETRY_MS)) continue;
         try {
           const verdict = await proveTrade(trade, result.trade);
           outcomes[key] = {status: verdict.status ?? 'RECEIVED', at: Date.now()};
