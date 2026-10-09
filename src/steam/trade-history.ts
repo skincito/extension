@@ -1,7 +1,7 @@
 import type {SteamHistoryTrade} from '../types';
 import {getAccessToken, clearAccessToken} from './access-token';
-export async function getTradeHistory(sellerSteamId: string, maxTrades = 250): Promise<SteamHistoryTrade[]> {
-  const token = await getAccessToken(sellerSteamId);
+export async function getTradeHistory(steamId: string, maxTrades = 250): Promise<SteamHistoryTrade[]> {
+  const token = await getAccessToken(steamId);
   const url = new URL('https://api.steampowered.com/IEconService/GetTradeHistory/v1/');
   url.search = new URLSearchParams({access_token: token, max_trades: String(maxTrades), include_failed: 'true'}).toString();
   const response = await fetch(url, {credentials: 'include'});

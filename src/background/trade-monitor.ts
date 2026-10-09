@@ -5,7 +5,8 @@ import {getTradeHistory} from '../steam/trade-history';
 import {evaluateTrade} from '../marketplace/matching';
 import {config} from '../config';
 import {proveTrade} from '../proof/trade-proof';
-import type {SteamHistoryTrade} from '../types';
+import {ownSteamId, roleOf, type SteamHistoryTrade} from '../types';
+import {soldAsset} from '../marketplace/matching';
 const LAST_CHECK = 'lastTradeCheck';
 /** Antes se reintentaba la prueba recién a las 6 horas; queda solo para borrarlo. */
 const LEGACY_PROOF_ATTEMPTS = 'proofAttempts';
@@ -33,9 +34,11 @@ export async function monitorTrades(force = false): Promise<void> {
     const pending = await getPendingTrades();
     if (!pending.length) return;
     const session = await getSteamSession();
-    const trades = pending.filter(t => t.sellerSteamId === session.steamId);
+    // Ventas y compras de la cuenta de Steam abierta: cada parte reporta y prueba con su historial.
+    const trades = pending.filter(t => ownSteamId(t) === session.steamId);
     if (!trades.length) return;
-    const {sent} = await getTradeOffers(session.steamId);
+    // Las ofertas enviadas solo le sirven al vendedor.
+    const {sent} = trades.some(t => roleOf(t) === 'SELLER') ? await getTradeOffers(session.steamId) : {sent: []};
     const history = await getTradeHistory(session.steamId);
     const stored = ((await chrome.storage.local.get(PROOF_OUTCOMES))[PROOF_OUTCOMES] as ProofOutcomes | undefined) ?? {};
     // Sólo se conservan los resultados de operaciones que siguen pendientes.
@@ -43,14 +46,14 @@ export async function monitorTrades(force = false): Promise<void> {
       Object.entries(stored).filter(([key]) => trades.some(t => key.startsWith(`${t.id}:`))));
     await chrome.storage.local.remove(LEGACY_PROOF_ATTEMPTS);
     for (const trade of trades) {
-      const offer = sent.find(o => o.tradeofferid === trade.steamTradeOfferId);
+      const offer = roleOf(trade) === 'SELLER' ? sent.find(o => o.tradeofferid === trade.steamTradeOfferId) : undefined;
       const result = evaluateTrade(trade, history);
       // Un rechazo del backend para una operación (p. ej. 409 si cambió de estado) no frena al resto.
       await reportStatus(trade.id, {marketplaceTradeId: trade.id, steamTradeOfferId: offer?.tradeofferid,
         offerState: offer?.trade_offer_state, historyTradeId: result.trade?.tradeid,
         historyStatus: result.trade?.status,
-        // Asset ID del item en el inventario del comprador; la API lo usa para buscarlo cuando no tiene float.
-        newAssetId: result.trade?.assets_given.find(a => a.appid === 730 && a.assetid === trade.assetId)?.new_assetid,
+        // Asset ID del ítem en el inventario del comprador (Steam lo informa al terminar la protección).
+        newAssetId: result.trade ? soldAsset(trade, result.trade)?.new_assetid : undefined,
         candidate: result.candidate, rolledBack: result.rolledBack,
         checkedAt: new Date().toISOString()}).catch(error => console.error('Skincito steam-status', trade.id, error));
       if ((result.candidate || result.rolledBack) && result.trade && config.notarySessionUrl && config.notaryVerifierUrl) {

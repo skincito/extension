@@ -1,11 +1,12 @@
 import {config} from '../config';
-import type {PendingTrade, ProofVerdict, SteamHistoryTrade} from '../types';
+import {ownSteamId, type PendingTrade, type ProofVerdict, type SteamHistoryTrade} from '../types';
 import {getAccessToken} from '../steam/access-token';
 import {getNotaryTicket, submitProof} from '../marketplace/client';
 import {runProofWorker, type ProveMessage, type ProveResult} from './run-worker';
 export async function proveTrade(trade: PendingTrade, history: SteamHistoryTrade): Promise<ProofVerdict> {
   if (!config.notarySessionUrl || !config.notaryVerifierUrl) throw new Error('Configurá el servicio TLSNotary antes de generar pruebas.');
-  const token = await getAccessToken(trade.sellerSteamId);
+  // Cada parte prueba con su propio historial: la API emite el ticket para esa cuenta.
+  const token = await getAccessToken(ownSteamId(trade));
   const url = new URL('https://api.steampowered.com/IEconService/GetTradeHistory/v1/');
   // Sin start_after_*/navigating_back: el notario sólo acepta la página más reciente, para que
   // un rollback o un intento posterior al trade probado no pueda quedar afuera.

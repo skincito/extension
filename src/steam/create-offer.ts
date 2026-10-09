@@ -2,6 +2,7 @@ import type {PendingTrade, OfferReport, SendOfferResponse} from '../types';
 import {getSteamSession, requireSeller} from './session';
 import {accountIdToSteamId} from './trade-offers';
 function parseTradeUrl(trade: PendingTrade): {token: string; partner: string} {
+  if (!trade.buyerTradeUrl) throw new Error('Falta la Trade URL del comprador.');
   const url = new URL(trade.buyerTradeUrl);
   if (url.origin !== 'https://steamcommunity.com' || url.pathname !== '/tradeoffer/new/') throw new Error('Trade URL inválida.');
   const partner = url.searchParams.get('partner'); const token = url.searchParams.get('token');

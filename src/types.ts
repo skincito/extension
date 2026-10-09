@@ -1,8 +1,20 @@
+/** Quién es el usuario en la operación: el vendedor envía la oferta; el comprador solo prueba lo que recibió. */
+export type TradeRole = 'SELLER' | 'BUYER';
 export interface PendingTrade {
   id: string; sellerSteamId: string; buyerSteamId: string; assetId: string;
-  marketHashName: string; acceptedAt: string; buyerTradeUrl: string;
-  steamTradeOfferId?: string; proofAcceptedAt?: string;
+  marketHashName: string; acceptedAt: string;
+  /** Sin rol (API anterior) es una venta. */
+  role?: TradeRole;
+  /** Solo en las ventas: con él se arma la oferta. */
+  buyerTradeUrl?: string;
+  status?: string;
+  steamTradeOfferId?: string;
+  /** Esta parte ya probó la entrega: no se vuelve a probar el trade completado (sí un rollback). */
+  proofAcceptedAt?: string;
 }
+export const roleOf = (trade: PendingTrade): TradeRole => trade.role ?? 'SELLER';
+/** La cuenta de Steam con la que esta parte opera: la del vendedor en una venta, la del comprador en una compra. */
+export const ownSteamId = (trade: PendingTrade): string => roleOf(trade) === 'BUYER' ? trade.buyerSteamId : trade.sellerSteamId;
 export interface BlockingOffer {id: string; state: number}
 /** Venta pendiente con la oferta de Steam que impide enviar otra, si existe. */
 export type ActiveTrade = PendingTrade & {blockingOffer?: BlockingOffer};

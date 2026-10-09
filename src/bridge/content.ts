@@ -6,6 +6,7 @@ async function init(): Promise<void> {
   const {trades, preferredTradeId} = await send<{trades: ActiveTrade[]; preferredTradeId?: string}>({type: 'GET_ACTIVE_TRADE'});
   const forThisPage = trades.filter(t => {
     try {
+      if (!t.buyerTradeUrl) return false;
       const a = new URL(t.buyerTradeUrl); const b = new URL(location.href);
       return a.origin === b.origin && a.pathname === b.pathname && a.searchParams.get('partner') === b.searchParams.get('partner') && a.searchParams.get('token') === b.searchParams.get('token');
     } catch {return false}

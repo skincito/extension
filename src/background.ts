@@ -1,5 +1,5 @@
 import {config} from './config';
-import type {ActiveTrade, PendingTrade, OfferReport} from './types';
+import {roleOf, type ActiveTrade, type PendingTrade, type OfferReport} from './types';
 import type {ApprovalView, ExternalRequest, InternalRequest} from './bridge/protocol';
 import {getPendingTrades, reportOffer, SkincitoAuthError} from './marketplace/client';
 import {getSteamSession} from './steam/session';
@@ -25,6 +25,12 @@ async function findTrade(id: string): Promise<PendingTrade> {
   if (!trade) throw new Error('Operación no encontrada.');
   return trade;
 }
+/** Una venta: lo único que se puede enviar o abrir en Steam (una compra solo se prueba). */
+async function findSale(id: string): Promise<PendingTrade & {buyerTradeUrl: string}> {
+  const trade = await findTrade(id);
+  if (roleOf(trade) !== 'SELLER' || !trade.buyerTradeUrl) throw new Error('Operación no encontrada.');
+  return trade as PendingTrade & {buyerTradeUrl: string};
+}
 async function withBlockingOffers(trades: PendingTrade[], sellerSteamId: string): Promise<ActiveTrade[]> {
   if (!trades.length) return [];
   const {sent} = await getTradeOffers(sellerSteamId);
@@ -36,7 +42,7 @@ async function assertNoBlockingOffer(trade: PendingTrade): Promise<void> {
   if (offer) throw new Error(`Ya hay una oferta ${OFFER_STATE_LABELS[offer.state] ?? ''} (${offer.id}) para esta venta. No envíes otra.`);
 }
 async function openTrade(id: string): Promise<{opened: true}> {
-  const trade = await findTrade(id);
+  const trade = await findSale(id);
   const u = new URL(trade.buyerTradeUrl);
   if (u.origin !== 'https://steamcommunity.com' || u.pathname !== '/tradeoffer/new/') throw new Error('Trade URL inválida.');
   const tab = await chrome.tabs.create({url: u.href});
@@ -49,7 +55,7 @@ async function openTrade(id: string): Promise<{opened: true}> {
 }
 /** Crea la oferta con sólo el asset vendido y la registra en Skincito. */
 async function deliver(tradeId: string): Promise<OfferReport> {
-  const trade = await findTrade(tradeId);
+  const trade = await findSale(tradeId);
   await assertNoBlockingOffer(trade);
   const report = await createOffer(trade);
   const demo = (await chrome.storage.local.get(DEMO_KEY))[DEMO_KEY] as PendingTrade | undefined;
@@ -59,7 +65,7 @@ async function deliver(tradeId: string): Promise<OfferReport> {
 }
 async function approvalView(requestId: string): Promise<ApprovalView> {
   const {tradeId, origin} = getApproval(requestId);
-  const trade = await findTrade(tradeId);
+  const trade = await findSale(tradeId);
   const {steamId} = await getSteamSession();
   // Las ofertas enviadas sólo se pueden leer con la cuenta vendedora; con otra cuenta la ventana ya avisa y no deja aprobar.
   const [checked] = steamId === trade.sellerSteamId ? await withBlockingOffers([trade], steamId) : [trade];
@@ -75,14 +81,14 @@ async function handle(message: InternalRequest, tabId?: number, origin = ''): Pr
     }
     case 'GET_ACTIVE_TRADE': {
       const session = await getSteamSession();
-      const trades = await withBlockingOffers((await pending()).filter(t => t.sellerSteamId === session.steamId), session.steamId);
+      const trades = await withBlockingOffers((await pending()).filter(t => roleOf(t) === 'SELLER' && t.sellerSteamId === session.steamId), session.steamId);
       const opened = ((await chrome.storage.session.get(OPENED_TABS))[OPENED_TABS] as Record<string, string> | undefined) ?? {};
       return {trades, preferredTradeId: tabId === undefined ? undefined : opened[tabId]};
     }
     case 'OPEN_TRADE': return openTrade(message.tradeId);
     case 'CREATE_OFFER': return deliver(message.tradeId);
     case 'REQUEST_DELIVERY': {
-      await findTrade(message.tradeId);
+      await findSale(message.tradeId);
       return requestApproval(message.tradeId, origin);
     }
     case 'GET_APPROVAL': return approvalView(message.requestId);
@@ -93,7 +99,7 @@ async function handle(message: InternalRequest, tabId?: number, origin = ''): Pr
       return reject(message.requestId);
     case 'PAGE_OFFER': {
       const r: OfferReport = message.report;
-      const t = await findTrade(r.marketplaceTradeId);
+      const t = await findSale(r.marketplaceTradeId);
       if (r.otherSteamId !== t.buyerSteamId || r.givenAssetIds.length !== 1 || r.givenAssetIds[0] !== t.assetId || r.receivedAssetIds.length) throw new Error('La oferta no coincide con la operación.');
       const demo = (await chrome.storage.local.get(DEMO_KEY))[DEMO_KEY] as PendingTrade | undefined;
       if (demo?.id === t.id) await chrome.storage.local.set({demoOfferReport: r});

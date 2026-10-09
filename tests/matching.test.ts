@@ -16,6 +16,14 @@ describe('Steam history matching', () => {
   it('latest completed attempt overrides older failed attempt', () => expect(evaluateTrade(order, [{...trade, tradeid: '99', time_init: trade.time_init - 1, status: 4}, trade]).candidate).toBe(true));
   it('does not prove the same sale twice', () => expect(evaluateTrade({...order, proofAcceptedAt: '2026-10-04T07:00:00Z'}, [trade]).candidate).toBe(false));
 });
+describe('Steam history matching from the buyer side', () => {
+  const purchase: PendingTrade = {...order, id: 'purchase', role: 'BUYER', buyerTradeUrl: undefined};
+  const received: SteamHistoryTrade = {...trade, steamid_other: S, assets_given: [], assets_received: [{appid: 730, assetid: A, new_assetid: '777'}]};
+  it('accepts the item received from the seller', () => expect(evaluateTrade(purchase, [received]).candidate).toBe(true));
+  it('rejects the item received from someone else', () => expect(evaluateTrade(purchase, [{...received, steamid_other: B}]).candidate).toBe(false));
+  it('does not take a trade where the buyer gave the item', () => expect(evaluateTrade(purchase, [{...received, assets_given: received.assets_received, assets_received: []}]).candidate).toBe(false));
+  it('sees the rollback in the buyer history too', () => expect(evaluateTrade(purchase, [{...received, status: 12}]).rolledBack).toBe(true));
+});
 describe('Blocking offers', () => {
   const offer: SteamOffer = {tradeofferid: '555', accountid_other: 0, otherSteamId: B, trade_offer_state: 2, items_to_give: [{appid: 730, assetid: A}], items_to_receive: [], time_created: 0, time_updated: 0};
   it('blocks an active offer to the buyer with the sold asset', () => expect(findBlockingOffer(order, [offer])?.tradeofferid).toBe('555'));

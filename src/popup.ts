@@ -18,8 +18,15 @@ function setRow(id: string, ok: boolean, text: string, link?: {href: string; lab
 }
 function renderTrades(trades: PendingTrade[]): void {
   $('trades').replaceChildren();
-  if (trades.length === 0) {$('trades').append(el('div', 'empty', 'No tenés ventas pendientes de envío.')); return}
+  if (trades.length === 0) {$('trades').append(el('div', 'empty', 'No tenés ventas ni compras en curso.')); return}
   for (const t of trades) {
+    if (t.role === 'BUYER') {
+      // Una compra no tiene acciones: la extensión prueba sola lo que recibiste.
+      const card = el('article', 'trade');
+      card.append(el('div', 'name', t.marketHashName), el('div', 'meta', `Compra · Asset ID ${t.assetId} · Vendedor ${t.sellerSteamId}`));
+      $('trades').append(card);
+      continue;
+    }
     const card = el('article', 'trade');
     const open = el('button', 'primary', 'Abrir en Steam');
     open.onclick = () => {void send({type: 'OPEN_TRADE', tradeId: t.id}).catch(error)};

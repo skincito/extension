@@ -1,7 +1,16 @@
-import type {PendingTrade, SteamHistoryTrade, SteamOffer} from '../types';
+import {roleOf, type PendingTrade, type SteamHistoryTrade, type SteamOffer, type TradeAsset} from '../types';
 export const TradeStatus = {Committed: 2, Complete: 3, Failed: 4, TradeProtectionRollback: 12} as const;
+/**
+ * El ítem vendido dentro de un trade del historial propio: el vendedor lo dio al comprador; el comprador
+ * lo recibió del vendedor. Steam informa en los dos lados el asset ID del inventario del vendedor.
+ */
+export function soldAsset(order: PendingTrade, trade: SteamHistoryTrade): TradeAsset | undefined {
+  const buyer = roleOf(order) === 'BUYER';
+  if (trade.steamid_other !== (buyer ? order.sellerSteamId : order.buyerSteamId)) return undefined;
+  return (buyer ? trade.assets_received : trade.assets_given).find(a => a.appid === 730 && a.assetid === order.assetId);
+}
 export function latestRelevantAttempt(order: PendingTrade, history: SteamHistoryTrade[]): SteamHistoryTrade | undefined {
-  return history.filter(t => t.steamid_other === order.buyerSteamId && t.assets_given.some(a => a.appid === 730 && a.assetid === order.assetId))
+  return history.filter(t => soldAsset(order, t))
     .sort((a, b) => b.time_init - a.time_init || b.tradeid.localeCompare(a.tradeid))[0];
 }
 export function evaluateTrade(order: PendingTrade, history: SteamHistoryTrade[]): {candidate: boolean; rolledBack: boolean; trade?: SteamHistoryTrade} {
