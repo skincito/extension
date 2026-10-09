@@ -6,7 +6,7 @@ import {getSteamSession} from './steam/session';
 import {getAccessToken} from './steam/access-token';
 import {createOffer} from './steam/create-offer';
 import {monitorTrades} from './background/trade-monitor';
-import {getTradeOffers} from './steam/trade-offers';
+import {getTradeOffers, cancelTradeOffer} from './steam/trade-offers';
 import {findBlockingOffer, OFFER_STATE_LABELS} from './marketplace/matching';
 import {approve, getApproval, reject, requestApproval} from './background/approval';
 
@@ -53,6 +53,17 @@ async function openTrade(id: string): Promise<{opened: true}> {
   }
   return {opened: true};
 }
+/**
+ * Cancela en Steam la oferta de una venta pendiente del usuario. Solo esa: la web no puede pedir que se
+ * cancele cualquier otra oferta de la cuenta.
+ */
+async function cancelSaleOffer(tradeOfferId: string): Promise<{cancelled: true; tradeOfferId: string}> {
+  const {steamId} = await getSteamSession();
+  const sale = (await pending()).find(t => roleOf(t) === 'SELLER' && t.steamTradeOfferId === tradeOfferId);
+  if (!sale) throw new Error('La oferta no corresponde a ninguna de tus ventas en curso.');
+  if (sale.sellerSteamId !== steamId) throw new Error(`Esta venta se envió desde la cuenta ${sale.sellerSteamId}: iniciá sesión en Steam con esa cuenta.`);
+  return cancelTradeOffer(tradeOfferId);
+}
 /** Crea la oferta con sólo el asset vendido y la registra en Skincito. */
 async function deliver(tradeId: string): Promise<OfferReport> {
   const trade = await findSale(tradeId);
@@ -87,6 +98,7 @@ async function handle(message: InternalRequest, tabId?: number, origin = ''): Pr
     }
     case 'OPEN_TRADE': return openTrade(message.tradeId);
     case 'CREATE_OFFER': return deliver(message.tradeId);
+    case 'CANCEL_OFFER': return cancelSaleOffer(message.tradeOfferId);
     case 'REQUEST_DELIVERY': {
       await findSale(message.tradeId);
       return requestApproval(message.tradeId, origin);
@@ -114,7 +126,8 @@ function fromWebsite(url: string | undefined): boolean {
 /** Lo que la web puede pedir: lo mismo llega por externally_connectable (Chrome) o por web-bridge.js (Firefox). */
 function externalOperation(message: ExternalRequest): InternalRequest | undefined {
   return message?.type === 'SKINCITO_GET_STATUS' ? {type: 'GET_STATUS'} :
-    message?.type === 'SKINCITO_REQUEST_DELIVERY' && typeof message.tradeId === 'string' ? {type: 'REQUEST_DELIVERY', tradeId: message.tradeId} : undefined;
+    message?.type === 'SKINCITO_REQUEST_DELIVERY' && typeof message.tradeId === 'string' ? {type: 'REQUEST_DELIVERY', tradeId: message.tradeId} :
+    message?.type === 'SKINCITO_CANCEL_OFFER' && typeof message.tradeOfferId === 'string' ? {type: 'CANCEL_OFFER', tradeOfferId: message.tradeOfferId} : undefined;
 }
 function respond(operation: InternalRequest, sendResponse: (response: unknown) => void, tabId?: number, origin?: string): true {
   handle(operation, tabId, origin).then(data => sendResponse({ok: true, data})).catch(error => sendResponse({ok: false, error: String(error)}));
@@ -132,7 +145,7 @@ chrome.runtime.onMessage.addListener((message: InternalRequest, sender, sendResp
   const fromExtensionPage = !!sender.url?.startsWith(chrome.runtime.getURL(''));
   // Aprobar una entrega sólo desde la ventana de la extensión, nunca desde un content script.
   if (['GET_APPROVAL', 'PING_APPROVAL', 'RESOLVE_APPROVAL'].includes(message?.type)) return fromExtensionPage ? respond(message, sendResponse) : undefined;
-  if (!['GET_STATUS', 'GET_ACTIVE_TRADE', 'OPEN_TRADE', 'CREATE_OFFER', 'PAGE_OFFER'].includes(message?.type)) return;
+  if (!['GET_STATUS', 'GET_ACTIVE_TRADE', 'OPEN_TRADE', 'CREATE_OFFER', 'PAGE_OFFER', 'CANCEL_OFFER'].includes(message?.type)) return;
   if (sender.url && !sender.url.startsWith('https://steamcommunity.com/') && !fromExtensionPage) return;
   return respond(message, sendResponse, sender.tab?.id);
 });

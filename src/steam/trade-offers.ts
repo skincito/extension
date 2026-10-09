@@ -1,5 +1,6 @@
 import type {SteamOffer, TradeAsset} from '../types';
 import {getAccessToken, clearAccessToken} from './access-token';
+import {getSteamSession} from './session';
 
 const BASE = 76561197960265728n;
 export function accountIdToSteamId(accountId: number): string {return (BASE + BigInt(accountId)).toString()}
@@ -39,3 +40,29 @@ export function parseSentOffersHtml(html: string): SteamOffer[] {
     return [{tradeofferid: id, accountid_other: 0, otherSteamId: '', trade_offer_state: state, items_to_give: [], items_to_receive: [], time_created: 0, time_updated: 0}];
   });
 }
+
+export async function cancelTradeOffer(tradeOfferId: string): Promise<{cancelled: true; tradeOfferId: string}> {
+  try {
+    const session = await getSteamSession();
+    const token = await getAccessToken(session.steamId);
+    const form = new URLSearchParams({access_token: token, tradeofferid: tradeOfferId});
+    const response = await fetch('https://api.steampowered.com/IEconService/CancelTradeOffer/v1/', {
+      method: 'POST',
+      body: form,
+    });
+    if (response.ok) return {cancelled: true, tradeOfferId};
+  } catch (error) {
+    console.warn('CancelTradeOffer API fallo; se intentara por sesion web', error);
+  }
+  const session = await getSteamSession();
+  const form = new URLSearchParams({sessionid: session.sessionId});
+  const response = await fetch(`https://steamcommunity.com/tradeoffer/${tradeOfferId}/cancel`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+    body: form,
+  });
+  if (!response.ok) throw new Error(`Steam cancel respondio ${response.status}`);
+  return {cancelled: true, tradeOfferId};
+}
+
