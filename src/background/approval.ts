@@ -38,10 +38,11 @@ export async function requestApproval<T>(kind: ApprovalKind, subjectId: string, 
   const result = new Promise<T>((resolve, reject) => approval.waiters.push({resolve: resolve as (result: unknown) => void, reject}));
   approvals.set(requestId, approval);
   try {
-    // Arriba a la derecha de la ventana desde la que se pidió, donde queda el ícono de la extensión.
+    // Arriba a la derecha de la ventana desde la que se pidió, donde queda el ícono de la extensión. La ventana
+    // después se ajusta a su contenido y se sube si no entra en la pantalla (approve.ts).
     const anchor = await chrome.windows.getLastFocused().catch(() => undefined);
     const position = anchor?.left !== undefined && anchor.width !== undefined && anchor.top !== undefined
-      ? {left: Math.max(anchor.left, anchor.left + anchor.width - WIDTH - 16), top: anchor.top + 72} : {};
+      ? {left: Math.max(anchor.left, anchor.left + anchor.width - WIDTH - 16), top: anchor.top + 16} : {};
     const window = await chrome.windows.create({url: chrome.runtime.getURL(`approve.html#${requestId}`), type: 'popup', width: WIDTH, height: HEIGHT, focused: true, ...position});
     approval.windowId = window?.id;
   } catch (error) {

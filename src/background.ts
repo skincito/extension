@@ -208,7 +208,7 @@ chrome.runtime.onMessage.addListener((message: InternalRequest, sender, sendResp
   if (sender.id !== chrome.runtime.id) return;
   const fromExtensionPage = !!sender.url?.startsWith(chrome.runtime.getURL(''));
   // Aprobar una entrega sólo desde la ventana de la extensión, nunca desde un content script.
-  if (['GET_APPROVAL', 'PING_APPROVAL', 'RESOLVE_APPROVAL'].includes(message?.type)) return fromExtensionPage ? respond(message, sendResponse) : undefined;
+  if (['GET_APPROVAL', 'PING_APPROVAL', 'RESOLVE_APPROVAL', 'CHECK_SALDO_SELL'].includes(message?.type)) return fromExtensionPage ? respond(message, sendResponse) : undefined;
   if (!['GET_STATUS', 'GET_ACTIVE_TRADE', 'OPEN_TRADE', 'CREATE_OFFER', 'PAGE_OFFER', 'CANCEL_OFFER'].includes(message?.type)) return;
   if (sender.url && !sender.url.startsWith('https://steamcommunity.com/') && !fromExtensionPage) return;
   return respond(message, sendResponse, sender.tab?.id);

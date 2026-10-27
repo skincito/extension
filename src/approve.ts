@@ -10,11 +10,24 @@ type SellCheck = {confirmed: false; state: 'TO_CONFIRM' | 'ON_HOLD'} | {confirme
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const requestId = location.hash.slice(1);
 async function send<T>(message: unknown): Promise<T> {
-  const response = await chrome.runtime.sendMessage(message) as {ok: boolean; data?: T; error?: string};
+  const response = await chrome.runtime.sendMessage(message) as {ok: boolean; data?: T; error?: string} | undefined;
+  if (!response) throw new Error('La extensión no respondió. Recargala en la página de extensiones y volvé a pedirlo desde la web.');
   if (!response.ok) throw new Error((response.error ?? '').replace(/^Error: /, ''));
   return response.data as T;
 }
-function notice(tone: 'warning' | 'error' | 'success', text: string): void {const n = $('notice'); n.className = `notice ${tone}`; n.textContent = text}
+function notice(tone: 'warning' | 'error' | 'success', text: string): void {const n = $('notice'); n.className = `notice ${tone}`; n.textContent = text; fit()}
+/** Ajusta el alto de la ventana a su contenido, para que no haya que scrollear, y la sube si no entra en la pantalla. */
+function fit(): void {requestAnimationFrame(() => {void (async () => {
+  const win = await chrome.windows.getCurrent().catch(() => undefined);
+  if (win?.id === undefined || win.top === undefined) return;
+  const part = (tag: string) => document.querySelector(tag) as HTMLElement;
+  const content = part('header').offsetHeight + part('main').scrollHeight + part('footer').offsetHeight;
+  const frame = window.outerHeight - window.innerHeight;
+  const availTop = (screen as Screen & {availTop?: number}).availTop ?? 0;
+  const height = Math.min(content + frame, screen.availHeight);
+  const top = Math.max(availTop, Math.min(win.top, availTop + screen.availHeight - height));
+  if (height !== win.height || top !== win.top) await chrome.windows.update(win.id, {height, top}).catch(() => undefined);
+})()})}
 /** Sin pedido que aprobar: sólo queda cerrar. */
 function finish(): void {
   $('waiting').hidden = true; clearInterval(poll);
@@ -111,6 +124,7 @@ function render(view: ApprovalView): void {
   const problem = view.kind === 'SALDO_SELL' ? renderSell(view) : view.kind === 'SALDO_BUY' ? renderBuy(view) : renderDelivery(view);
   if (problem) {notice('warning', problem); return}
   $<HTMLButtonElement>('approve').disabled = false;
+  fit();
 }
 let poll: ReturnType<typeof setInterval> | undefined;
 let checking = false;
@@ -134,7 +148,8 @@ async function checkSell(manual: boolean): Promise<void> {
 }
 /** Publicado en Steam, falta la confirmación en la app: círculo de carga, "Ya la aprobé" y chequeo periódico. */
 function awaitSellConfirmation(): void {
-  $('waiting').hidden = false; $('notice').textContent = '';
+  // Lo que se iba a hacer ya pasó: queda la espera arriba, sin las aclaraciones previas.
+  $('waiting').hidden = false; $('bullets').hidden = true; $('notice').textContent = ''; fit();
   const approve = $<HTMLButtonElement>('approve'), close = $<HTMLButtonElement>('reject');
   approve.textContent = 'Ya la aprobé'; approve.disabled = false;
   approve.onclick = () => {void checkSell(true)};
