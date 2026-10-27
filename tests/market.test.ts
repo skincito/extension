@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {assertUsdWallet, buyForm, findOwnListing, interpretBuy, interpretSell, parseWalletInfo, sellForm} from '../src/steam/market';
+import {assertUsdWallet, buyForm, findOwnListing, interpretBuy, interpretSell, parseWalletInfo, planRemoval, sellForm} from '../src/steam/market';
 import type {SaldoBuyRequest, SaldoSellRequest} from '../src/types';
 const fields = (form: URLSearchParams) => {const out: Record<string, string> = {}; form.forEach((value, key) => {out[key] = value}); return out};
 
@@ -69,5 +69,14 @@ describe('publicaciones propias (mylistings)', () => {
   it('si Steam no devuelve las publicaciones, falla en vez de decir que no está', () => {
     expect(() => findOwnListing({success: false}, 730, '1')).toThrow(/publicaciones/);
     expect(() => findOwnListing(null, 730, '1')).toThrow(/publicaciones/);
+  });
+});
+
+describe('quitar la publicación de una oferta cancelada', () => {
+  it('quita la publicación del asset y, si la oferta se verificó, sólo esa', () => {
+    expect(planRemoval(null, '111')).toEqual({action: 'gone'});
+    expect(planRemoval({listingId: '111', state: 'ACTIVE'}, '111')).toEqual({action: 'remove', listingId: '111'});
+    expect(planRemoval({listingId: '222', state: 'TO_CONFIRM'}, null)).toEqual({action: 'remove', listingId: '222'});
+    expect(() => planRemoval({listingId: '333', state: 'ACTIVE'}, '111')).toThrow(/fuera de esta oferta/);
   });
 });

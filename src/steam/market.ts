@@ -71,6 +71,15 @@ export async function getOwnListing(appId: number, assetId: string): Promise<Own
   if (!response.ok) throw new Error(`Steam respondió ${response.status} al leer tus publicaciones.`);
   return findOwnListing(await response.json().catch(() => null) as MyListingsResponse | null, appId, assetId);
 }
+/**
+ * Qué publicación quitar del asset de una oferta cancelada. Sin publicación no hay nada que hacer. Si la oferta
+ * llegó a verificarse, sólo esa: otra publicación del mismo skin la hizo el usuario por su cuenta y no se toca.
+ */
+export function planRemoval(own: OwnListing | null, expectedListingId: string | null): {action: 'gone'} | {action: 'remove'; listingId: string} {
+  if (!own) return {action: 'gone'};
+  if (expectedListingId && own.listingId !== expectedListingId) throw new Error('Este skin está publicado de nuevo en Steam, fuera de esta oferta: no lo quitamos.');
+  return {action: 'remove', listingId: own.listingId};
+}
 export interface SaldoBuyResult {bought: true; needsConfirmation: boolean; walletBalanceMinor: number | null}
 
 export function interpretSell(status: number, body: SellResponse | null): SaldoSellResult {
@@ -111,6 +120,14 @@ export async function sellSaldoItem(request: SaldoSellRequest): Promise<SaldoSel
   assertUsdWallet(await getWalletInfo());
   const {status, body} = await postForm<SellResponse>('https://steamcommunity.com/market/sellitem/', `https://steamcommunity.com/profiles/${session.steamId}/inventory/`, sellForm(session.sessionId, request));
   return interpretSell(status, body);
+}
+
+/** Quita una publicación propia del market (el botón "Retirar" de Steam): el skin vuelve al inventario. */
+export async function removeOwnListing(listingId: string): Promise<void> {
+  if (!/^\d+$/.test(listingId)) throw new Error('Publicación de Steam inválida.');
+  const session = await getSteamSession();
+  const {status} = await postForm<unknown>(`https://steamcommunity.com/market/removelisting/${listingId}`, 'https://steamcommunity.com/market/', new URLSearchParams({sessionid: session.sessionId}));
+  if (status !== 200) throw new Error(`Steam respondió ${status} al quitar la publicación.`);
 }
 
 /** Compra exactamente el listing verificado de la operación, con la billetera de Steam. */

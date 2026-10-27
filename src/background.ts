@@ -1,15 +1,15 @@
 import {config} from './config';
 import {roleOf, type ActiveTrade, type PendingTrade, type OfferReport, type SaldoSellRequest} from './types';
 import type {ApprovalView, ExternalRequest, InternalRequest} from './bridge/protocol';
-import {confirmSaldoListing, getPendingTrades, getSaldoBuyRequest, getSaldoSellRequest, reportOffer, reportSaldoPurchase, SkincitoAuthError} from './marketplace/client';
-import {getSteamSession} from './steam/session';
+import {confirmSaldoListing, getPendingTrades, getSaldoBuyRequest, getSaldoRemoveRequest, getSaldoSellRequest, reportOffer, reportSaldoPurchase, SkincitoAuthError} from './marketplace/client';
+import {getSteamSession, requireSeller} from './steam/session';
 import {getAccessToken} from './steam/access-token';
 import {createOffer} from './steam/create-offer';
 import {monitorTrades} from './background/trade-monitor';
 import {getTradeOffers, cancelTradeOffer} from './steam/trade-offers';
 import {findBlockingOffer, OFFER_STATE_LABELS} from './marketplace/matching';
 import {approve, complete, getApproval, isAwaitingConfirmation, reject, requestApproval, type ApprovalKind, type Awaiting} from './background/approval';
-import {buySaldoListing, getOwnListing, getWalletInfo, sellSaldoItem, type SaldoBuyResult, type SaldoSellResult} from './steam/market';
+import {buySaldoListing, getOwnListing, getWalletInfo, planRemoval, removeOwnListing, sellSaldoItem, type SaldoBuyResult, type SaldoSellResult} from './steam/market';
 
 const DEMO_KEY = 'demoPendingTrade';
 const OPENED_TABS = 'openedTradeTabs';
@@ -111,6 +111,19 @@ async function checkSaldoSell(requestId: string): Promise<{confirmed: false; sta
   complete(requestId, result);
   return {confirmed: true, result};
 }
+/**
+ * Quita del market la publicación de una oferta de saldo cancelada y comprueba que ya no esté. `removed` es false
+ * si no había nada publicado (no se llegó a publicar o ya se quitó).
+ */
+async function removeSaldoListing(saldoListingId: string): Promise<{removed: boolean; steamListingId: string | null}> {
+  const request = await getSaldoRemoveRequest(saldoListingId);
+  requireSeller((await getSteamSession()).steamId, request.steamId);
+  const plan = planRemoval(await getOwnListing(request.appId, request.assetId), request.steamListingId);
+  if (plan.action === 'gone') return {removed: false, steamListingId: null};
+  await removeOwnListing(plan.listingId);
+  if (await getOwnListing(request.appId, request.assetId)) throw new Error('Steam no quitó la publicación: quitala desde tus publicaciones del market.');
+  return {removed: true, steamListingId: plan.listingId};
+}
 /** Compra el listing de la operación y avisa "Ya la compré". Comprado en Steam, nunca falla: no hay que volver a comprar. */
 async function buySaldo(saldoTradeId: string): Promise<Reported<SaldoBuyResult>> {
   const result = await buySaldoListing(await getSaldoBuyRequest(saldoTradeId));
@@ -151,6 +164,7 @@ async function handle(message: InternalRequest, tabId?: number, origin = ''): Pr
     case 'OPEN_TRADE': return openTrade(message.tradeId);
     case 'CREATE_OFFER': return deliver(message.tradeId);
     case 'CANCEL_OFFER': return cancelSaleOffer(message.tradeOfferId);
+    case 'REMOVE_SALDO_LISTING': return removeSaldoListing(message.saldoListingId);
     case 'REQUEST_DELIVERY': {
       await findSale(message.tradeId);
       return requestApproval<OfferReport>('DELIVERY', message.tradeId, origin);
@@ -191,7 +205,8 @@ function externalOperation(message: ExternalRequest): InternalRequest | undefine
     message?.type === 'SKINCITO_REQUEST_DELIVERY' && typeof message.tradeId === 'string' ? {type: 'REQUEST_DELIVERY', tradeId: message.tradeId} :
     message?.type === 'SKINCITO_CANCEL_OFFER' && typeof message.tradeOfferId === 'string' ? {type: 'CANCEL_OFFER', tradeOfferId: message.tradeOfferId} :
     message?.type === 'SKINCITO_REQUEST_SALDO_SELL' && typeof message.saldoListingId === 'string' ? {type: 'REQUEST_SALDO_SELL', saldoListingId: message.saldoListingId} :
-    message?.type === 'SKINCITO_REQUEST_SALDO_BUY' && typeof message.saldoTradeId === 'string' ? {type: 'REQUEST_SALDO_BUY', saldoTradeId: message.saldoTradeId} : undefined;
+    message?.type === 'SKINCITO_REQUEST_SALDO_BUY' && typeof message.saldoTradeId === 'string' ? {type: 'REQUEST_SALDO_BUY', saldoTradeId: message.saldoTradeId} :
+    message?.type === 'SKINCITO_REMOVE_SALDO_LISTING' && typeof message.saldoListingId === 'string' ? {type: 'REMOVE_SALDO_LISTING', saldoListingId: message.saldoListingId} : undefined;
 }
 function respond(operation: InternalRequest, sendResponse: (response: unknown) => void, tabId?: number, origin?: string): true {
   handle(operation, tabId, origin).then(data => sendResponse({ok: true, data})).catch(error => sendResponse({ok: false, error: String(error)}));

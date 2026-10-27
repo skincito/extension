@@ -31,6 +31,11 @@ export interface ProofSubmission {marketplaceTradeId: string; steamTradeId: stri
 export interface ProofVerdict {accepted: boolean; status?: 'VERIFIED' | 'REJECTED' | 'RECEIVED'; reason?: string}
 /** Mercado de saldo: publicar el skin de una oferta propia (GET /extension/saldo/listings/:id/sell). `priceMinor` es "You receive". */
 export interface SaldoSellRequest {id: string; steamId: string; appId: number; contextId: string; assetId: string; marketHashName: string; name: string; priceMinor: number; buyerPaysMinor: number; currency: 'USD'}
+/**
+ * Mercado de saldo: quitar del market el skin de una oferta propia cancelada (GET /extension/saldo/listings/:id/remove).
+ * `steamListingId`: la publicación verificada, o null si se canceló antes de verificarla.
+ */
+export interface SaldoRemoveRequest {id: string; steamId: string; appId: number; assetId: string; name: string; steamListingId: string | null}
 /** Mercado de saldo: comprar el listing verificado de una operación propia (GET /extension/saldo/trades/:id/buy). */
 export interface SaldoBuyRequest {id: string; sellerSteamId: string; appId: number; marketHashName: string; name: string; wearRating: number; patternTemplate: number | null;
   priceUsdMinor: number; sellerNetMinor: number; reservedUntil: string; listingId: string; currency: number | null; subtotal: number; fee: number; total: number}

@@ -1,5 +1,5 @@
 import {config} from '../config';
-import type {OfferReport, PendingTrade, ProofSubmission, ProofVerdict, SaldoBuyRequest, SaldoSellRequest, StatusReport} from '../types';
+import type {OfferReport, PendingTrade, ProofSubmission, ProofVerdict, SaldoBuyRequest, SaldoRemoveRequest, SaldoSellRequest, StatusReport} from '../types';
 /** Sin sesión de Skincito: la API responde 401/403 (DevAuthGuard usa 403). */
 export class SkincitoAuthError extends Error {constructor(status: number) {super(`Iniciá sesión en Skincito (${status}).`)}}
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -21,8 +21,8 @@ export function reportStatus(tradeId: string, report: StatusReport): Promise<{ac
 export async function getNotaryTicket(tradeId: string): Promise<string> {return (await api<{ticket: string}>(`/extension/trades/${encodeURIComponent(tradeId)}/notary-ticket`, {method: 'POST'})).ticket}
 export function submitProof(tradeId: string, proof: ProofSubmission): Promise<ProofVerdict> {return api(`/extension/trades/${encodeURIComponent(tradeId)}/proof`, {method: 'POST', body: JSON.stringify(proof)})}
 export function getSaldoSellRequest(listingId: string): Promise<SaldoSellRequest> {return api(`/extension/saldo/listings/${encodeURIComponent(listingId)}/sell`)}
+export function getSaldoRemoveRequest(listingId: string): Promise<SaldoRemoveRequest> {return api(`/extension/saldo/listings/${encodeURIComponent(listingId)}/remove`)}
 export function getSaldoBuyRequest(tradeId: string): Promise<SaldoBuyRequest> {return api(`/extension/saldo/trades/${encodeURIComponent(tradeId)}/buy`)}
-/** "Ya lo publiqué": la API agenda la verificación del listing en Steam. */
 /** "Ya lo publiqué". `steamListingId`: la publicación que la extensión vio confirmada entre las propias del usuario. */
 export function confirmSaldoListing(listingId: string, steamListingId?: string): Promise<unknown> {
   return api(`/saldo-listings/${encodeURIComponent(listingId)}/confirm`, {method: 'POST', body: JSON.stringify(steamListingId ? {steamListingId} : {})});
