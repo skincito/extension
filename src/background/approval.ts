@@ -1,28 +1,36 @@
-import type {OfferReport} from '../types';
-
 /**
- * Pedidos de entrega de la web esperando que el vendedor los apruebe, como las firmas de MetaMask: la web pide,
- * la extensión abre su propia ventana (que la página no puede falsificar ni cliquear) y recién al aprobar crea la oferta.
+ * Pedidos de la web esperando que el usuario los apruebe, como las firmas de MetaMask: la web pide,
+ * la extensión abre su propia ventana (que la página no puede falsificar ni cliquear) y recién al aprobar actúa en Steam.
  * Viven en memoria: si el service worker se reinicia, la ventana avisa que el pedido venció y la web vuelve a pedirlo.
+ *
+ * - DELIVERY: crear la oferta de intercambio de una venta (`subjectId` = orden).
+ * - SALDO_SELL: publicar en el market el skin de una oferta de compra de saldo (`subjectId` = oferta).
+ * - SALDO_BUY: comprar en el market el listing de una operación de venta de saldo (`subjectId` = operación).
  */
-interface Waiter {resolve(report: OfferReport): void; reject(error: Error): void}
-interface Approval {tradeId: string; origin: string; windowId?: number; waiters: Waiter[]}
+export type ApprovalKind = 'DELIVERY' | 'SALDO_SELL' | 'SALDO_BUY';
+interface Waiter {resolve(result: unknown): void; reject(error: Error): void}
+interface Approval {kind: ApprovalKind; subjectId: string; origin: string; windowId?: number; waiters: Waiter[]}
 const approvals = new Map<string, Approval>();
 const WIDTH = 380, HEIGHT = 600;
+const REJECTED: Record<ApprovalKind, string> = {
+  DELIVERY: 'Rechazaste la entrega en la extensión.',
+  SALDO_SELL: 'Rechazaste la publicación en la extensión.',
+  SALDO_BUY: 'Rechazaste la compra en la extensión.',
+};
 
-function byTrade(tradeId: string): [string, Approval] | undefined {return [...approvals].find(([, a]) => a.tradeId === tradeId)}
+function find(kind: ApprovalKind, subjectId: string): [string, Approval] | undefined {return [...approvals].find(([, a]) => a.kind === kind && a.subjectId === subjectId)}
 
-/** Abre la ventana de aprobación y resuelve con la oferta creada, o rechaza si el vendedor la cierra o rechaza. */
-export async function requestApproval(tradeId: string, origin: string): Promise<OfferReport> {
-  const existing = byTrade(tradeId);
+/** Abre la ventana de aprobación y resuelve con el resultado, o rechaza si el usuario la cierra o rechaza. */
+export async function requestApproval<T>(kind: ApprovalKind, subjectId: string, origin: string): Promise<T> {
+  const existing = find(kind, subjectId);
   if (existing) {
     // Un segundo click en la web no abre otra ventana: trae al frente la que ya está esperando.
     if (existing[1].windowId !== undefined) await chrome.windows.update(existing[1].windowId, {focused: true}).catch(() => undefined);
-    return new Promise((resolve, reject) => existing[1].waiters.push({resolve, reject}));
+    return new Promise<T>((resolve, reject) => existing[1].waiters.push({resolve: resolve as (result: unknown) => void, reject}));
   }
   const requestId = crypto.randomUUID();
-  const approval: Approval = {tradeId, origin, waiters: []};
-  const result = new Promise<OfferReport>((resolve, reject) => approval.waiters.push({resolve, reject}));
+  const approval: Approval = {kind, subjectId, origin, waiters: []};
+  const result = new Promise<T>((resolve, reject) => approval.waiters.push({resolve: resolve as (result: unknown) => void, reject}));
   approvals.set(requestId, approval);
   try {
     // Arriba a la derecha de la ventana desde la que se pidió, donde queda el ícono de la extensión.
@@ -38,20 +46,20 @@ export async function requestApproval(tradeId: string, origin: string): Promise<
   return result;
 }
 
-export function getApproval(requestId: string): {tradeId: string; origin: string} {
+export function getApproval(requestId: string): {kind: ApprovalKind; subjectId: string; origin: string} {
   const approval = approvals.get(requestId);
-  if (!approval) throw new Error('Este pedido de entrega venció. Volvé a Skincito y tocá "Entregar con la extensión" de nuevo.');
-  return {tradeId: approval.tradeId, origin: approval.origin};
+  if (!approval) throw new Error('Este pedido venció. Volvé a Skincito y tocá de nuevo el botón de la extensión.');
+  return {kind: approval.kind, subjectId: approval.subjectId, origin: approval.origin};
 }
 
-/** Aprobado: entrega y avisa a la web. Si la entrega falla, el pedido sigue abierto para reintentar o rechazar. */
-export async function approve(requestId: string, deliver: (tradeId: string) => Promise<OfferReport>): Promise<OfferReport> {
-  const {tradeId} = getApproval(requestId);
-  const report = await deliver(tradeId);
+/** Aprobado: actúa en Steam y avisa a la web. Si falla, el pedido sigue abierto para reintentar o rechazar. */
+export async function approve(requestId: string, run: (kind: ApprovalKind, subjectId: string) => Promise<unknown>): Promise<unknown> {
+  const {kind, subjectId} = getApproval(requestId);
+  const result = await run(kind, subjectId);
   const approval = approvals.get(requestId);
   approvals.delete(requestId);
-  approval?.waiters.forEach(w => w.resolve(report));
-  return report;
+  approval?.waiters.forEach(w => w.resolve(result));
+  return result;
 }
 
 export async function reject(requestId: string): Promise<void> {
@@ -64,7 +72,7 @@ export async function reject(requestId: string): Promise<void> {
 function settleRejected(requestId: string): void {
   const approval = approvals.get(requestId);
   approvals.delete(requestId);
-  approval?.waiters.forEach(w => w.reject(new Error('Rechazaste la entrega en la extensión.')));
+  approval?.waiters.forEach(w => w.reject(new Error(REJECTED[approval.kind])));
 }
 
 // Cerrar la ventana sin aprobar equivale a rechazar.

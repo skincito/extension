@@ -29,3 +29,8 @@ export interface StatusReport {marketplaceTradeId: string; steamTradeOfferId?: s
 export interface ProofSubmission {marketplaceTradeId: string; steamTradeId: string; proof: string; proofFormat: 'skincito-notary-v1'}
 /** Respuesta de la API a una prueba: RECEIVED si la API no tiene notario configurado. */
 export interface ProofVerdict {accepted: boolean; status?: 'VERIFIED' | 'REJECTED' | 'RECEIVED'; reason?: string}
+/** Mercado de saldo: publicar el skin de una oferta propia (GET /extension/saldo/listings/:id/sell). `priceMinor` es "You receive". */
+export interface SaldoSellRequest {id: string; steamId: string; appId: number; contextId: string; assetId: string; marketHashName: string; name: string; priceMinor: number; buyerPaysMinor: number; currency: 'USD'}
+/** Mercado de saldo: comprar el listing verificado de una operación propia (GET /extension/saldo/trades/:id/buy). */
+export interface SaldoBuyRequest {id: string; sellerSteamId: string; appId: number; marketHashName: string; name: string; wearRating: number; patternTemplate: number | null;
+  priceUsdMinor: number; sellerNetMinor: number; reservedUntil: string; listingId: string; currency: number | null; subtotal: number; fee: number; total: number}

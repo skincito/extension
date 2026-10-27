@@ -1,14 +1,15 @@
 import {config} from './config';
 import {roleOf, type ActiveTrade, type PendingTrade, type OfferReport} from './types';
 import type {ApprovalView, ExternalRequest, InternalRequest} from './bridge/protocol';
-import {getPendingTrades, reportOffer, SkincitoAuthError} from './marketplace/client';
+import {confirmSaldoListing, getPendingTrades, getSaldoBuyRequest, getSaldoSellRequest, reportOffer, reportSaldoPurchase, SkincitoAuthError} from './marketplace/client';
 import {getSteamSession} from './steam/session';
 import {getAccessToken} from './steam/access-token';
 import {createOffer} from './steam/create-offer';
 import {monitorTrades} from './background/trade-monitor';
 import {getTradeOffers, cancelTradeOffer} from './steam/trade-offers';
 import {findBlockingOffer, OFFER_STATE_LABELS} from './marketplace/matching';
-import {approve, getApproval, reject, requestApproval} from './background/approval';
+import {approve, getApproval, reject, requestApproval, type ApprovalKind} from './background/approval';
+import {buySaldoListing, getWalletInfo, sellSaldoItem, type SaldoBuyResult, type SaldoSellResult} from './steam/market';
 
 const DEMO_KEY = 'demoPendingTrade';
 const OPENED_TABS = 'openedTradeTabs';
@@ -74,13 +75,36 @@ async function deliver(tradeId: string): Promise<OfferReport> {
   else await reportOffer(trade.id, report);
   return report;
 }
+/** Resultado que vuelve a la web: si avisar a Skincito falló, la publicación o la compra igual ya se hizo en Steam. */
+type Reported<T> = T & {reported: boolean; reportError?: string};
+/** Publica el skin de la oferta de compra de saldo y avisa "Ya lo publiqué". */
+async function sellSaldo(saldoListingId: string): Promise<Reported<SaldoSellResult>> {
+  const result = await sellSaldoItem(await getSaldoSellRequest(saldoListingId));
+  try {await confirmSaldoListing(saldoListingId); return {...result, reported: true}}
+  catch (error) {return {...result, reported: false, reportError: (error as Error).message}}
+}
+/** Compra el listing de la operación y avisa "Ya la compré". Comprado en Steam, nunca falla: no hay que volver a comprar. */
+async function buySaldo(saldoTradeId: string): Promise<Reported<SaldoBuyResult>> {
+  const result = await buySaldoListing(await getSaldoBuyRequest(saldoTradeId));
+  try {await reportSaldoPurchase(saldoTradeId); return {...result, reported: true}}
+  catch (error) {return {...result, reported: false, reportError: (error as Error).message}}
+}
+function runApproved(kind: ApprovalKind, subjectId: string): Promise<unknown> {
+  return kind === 'SALDO_SELL' ? sellSaldo(subjectId) : kind === 'SALDO_BUY' ? buySaldo(subjectId) : deliver(subjectId);
+}
+async function walletView() {
+  const wallet = await getWalletInfo().catch(() => null);
+  return wallet ? {currency: wallet.wallet_currency, balanceMinor: Number(wallet.wallet_balance ?? 0)} : null;
+}
 async function approvalView(requestId: string): Promise<ApprovalView> {
-  const {tradeId, origin} = getApproval(requestId);
-  const trade = await findSale(tradeId);
+  const {kind, subjectId, origin} = getApproval(requestId);
   const {steamId} = await getSteamSession();
+  if (kind === 'SALDO_SELL') return {kind, sell: await getSaldoSellRequest(subjectId), steamId, origin, wallet: await walletView()};
+  if (kind === 'SALDO_BUY') return {kind, buy: await getSaldoBuyRequest(subjectId), steamId, origin, wallet: await walletView()};
+  const trade = await findSale(subjectId);
   // Las ofertas enviadas sólo se pueden leer con la cuenta vendedora; con otra cuenta la ventana ya avisa y no deja aprobar.
   const [checked] = steamId === trade.sellerSteamId ? await withBlockingOffers([trade], steamId) : [trade];
-  return {trade: checked ?? trade, steamId, origin};
+  return {kind, trade: checked ?? trade, steamId, origin};
 }
 async function handle(message: InternalRequest, tabId?: number, origin = ''): Promise<unknown> {
   switch (message.type) {
@@ -101,13 +125,22 @@ async function handle(message: InternalRequest, tabId?: number, origin = ''): Pr
     case 'CANCEL_OFFER': return cancelSaleOffer(message.tradeOfferId);
     case 'REQUEST_DELIVERY': {
       await findSale(message.tradeId);
-      return requestApproval(message.tradeId, origin);
+      return requestApproval<OfferReport>('DELIVERY', message.tradeId, origin);
+    }
+    // Se lee de Skincito antes de abrir la ventana: si la oferta o la operación no es del usuario, no se abre nada.
+    case 'REQUEST_SALDO_SELL': {
+      await getSaldoSellRequest(message.saldoListingId);
+      return requestApproval('SALDO_SELL', message.saldoListingId, origin);
+    }
+    case 'REQUEST_SALDO_BUY': {
+      await getSaldoBuyRequest(message.saldoTradeId);
+      return requestApproval('SALDO_BUY', message.saldoTradeId, origin);
     }
     case 'GET_APPROVAL': return approvalView(message.requestId);
     // La ventana avisa cada tanto: mantiene vivo el service worker mientras el vendedor decide.
     case 'PING_APPROVAL': return getApproval(message.requestId);
     case 'RESOLVE_APPROVAL':
-      if (message.approved) return approve(message.requestId, deliver);
+      if (message.approved) return approve(message.requestId, runApproved);
       return reject(message.requestId);
     case 'PAGE_OFFER': {
       const r: OfferReport = message.report;
@@ -127,7 +160,9 @@ function fromWebsite(url: string | undefined): boolean {
 function externalOperation(message: ExternalRequest): InternalRequest | undefined {
   return message?.type === 'SKINCITO_GET_STATUS' ? {type: 'GET_STATUS'} :
     message?.type === 'SKINCITO_REQUEST_DELIVERY' && typeof message.tradeId === 'string' ? {type: 'REQUEST_DELIVERY', tradeId: message.tradeId} :
-    message?.type === 'SKINCITO_CANCEL_OFFER' && typeof message.tradeOfferId === 'string' ? {type: 'CANCEL_OFFER', tradeOfferId: message.tradeOfferId} : undefined;
+    message?.type === 'SKINCITO_CANCEL_OFFER' && typeof message.tradeOfferId === 'string' ? {type: 'CANCEL_OFFER', tradeOfferId: message.tradeOfferId} :
+    message?.type === 'SKINCITO_REQUEST_SALDO_SELL' && typeof message.saldoListingId === 'string' ? {type: 'REQUEST_SALDO_SELL', saldoListingId: message.saldoListingId} :
+    message?.type === 'SKINCITO_REQUEST_SALDO_BUY' && typeof message.saldoTradeId === 'string' ? {type: 'REQUEST_SALDO_BUY', saldoTradeId: message.saldoTradeId} : undefined;
 }
 function respond(operation: InternalRequest, sendResponse: (response: unknown) => void, tabId?: number, origin?: string): true {
   handle(operation, tabId, origin).then(data => sendResponse({ok: true, data})).catch(error => sendResponse({ok: false, error: String(error)}));

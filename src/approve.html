@@ -52,21 +52,14 @@ button:disabled{opacity:.45;cursor:not-allowed;filter:none}
   <div class="origin" id="origin"></div>
 </header>
 <main>
-  <div id="loading" class="center">Preparando la entrega…</div>
+  <div id="loading" class="center">Preparando el pedido…</div>
+  <!-- Entrega, publicación o compra en el market: approve.ts completa el texto según el pedido. -->
   <section id="request" hidden>
-    <div class="eyebrow">Pedido de entrega</div>
-    <h2>¿Enviar este item al comprador?</h2>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h2 id="title"></h2>
     <div class="item"><div class="name" id="item"></div><div class="asset" id="asset"></div></div>
-    <div class="route">
-      <div class="row"><span>Desde tu cuenta</span><b id="seller"></b></div>
-      <div class="row"><span>Para el comprador</span><b><a id="buyer" target="_blank" rel="noopener noreferrer"></a></b></div>
-      <div class="row"><span>Pedís a cambio</span><b>Nada</b></div>
-    </div>
-    <ul>
-      <li>La oferta incluye sólo el item vendido.</li>
-      <li>Queda registrada en Skincito al crearse.</li>
-      <li>Steam puede pedirte confirmarla en la app móvil.</li>
-    </ul>
+    <div class="route" id="rows"></div>
+    <ul id="bullets"></ul>
   </section>
   <div class="notice" id="notice"></div>
 </main>

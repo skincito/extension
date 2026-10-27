@@ -27,6 +27,17 @@ Body: `{marketplaceTradeId, steamTradeId?, proof, proofFormat: "skincito-notary-
 
 `RECEIVED` significa que la API no tiene configurado el secreto del notario; en ese caso no se guarda la prueba.
 
+## Mercado de saldo
+
+La web pide `SKINCITO_REQUEST_SALDO_SELL {saldoListingId}` (el comprador de saldo publica el skin de su oferta) o `SKINCITO_REQUEST_SALDO_BUY {saldoTradeId}` (el vendedor de saldo compra el listing de la oferta que tomó). Antes de abrir `approve.html` la extensión lee de Skincito lo que va a firmar; la página no aporta ningún dato.
+
+- `GET /extension/saldo/listings/{id}/sell` → `{id, steamId, appId, contextId, assetId, marketHashName, name, priceMinor, buyerPaysMinor, currency: "USD"}`. Solo el dueño de la oferta y solo en `AWAITING_STEAM_LISTING` (si no, `404`/`409`). `priceMinor` es lo que recibe el vendedor en Steam ("You receive"): es el `price` de `POST steamcommunity.com/market/sellitem/`.
+- `GET /extension/saldo/trades/{id}/buy` → `{id, sellerSteamId, appId, marketHashName, name, wearRating, patternTemplate, priceUsdMinor, sellerNetMinor, reservedUntil, listingId, currency, subtotal, fee, total}`. Solo quien tomó la oferta y solo con la reserva vigente (`RESERVED`). `subtotal`/`fee`/`total` son los del listing verificado (`unPrice`/`unFee`): van tal cual a `POST steamcommunity.com/market/buylisting/{listingId}`, con `currency=1` (la billetera tiene que estar en USD).
+
+Al terminar en Steam la extensión avisa con los endpoints de la web: `POST /saldo-listings/{id}/confirm` ("Ya lo publiqué") y `POST /saldo-trades/{id}/purchased` ("Ya la compré"). Los dos solo agendan la verificación en Steam (el listing en QueryListingsForItem; la compra, por el listing desaparecido y el skin en el inventario público del vendedor de saldo): no son prueba de nada. Si el aviso falla, la publicación o la compra igual quedó hecha y la ventana pide tocar el botón en la web.
+
+Sin verificar contra Steam: si `buylisting` pide confirmación en la app (se trata `need_confirmation` como pendiente) y el formato exacto de `g_rgWalletInfo`.
+
 ## Servicio notarial
 
 El notario es `services/notary` del repo `fedebogovic/skincito`: `/session` registra la sesión (mensaje `register` con el ticket) y `/verifier?sessionId=...` es el canal TLSNotary en modo proxy. El servicio de Skincito controla el notario y comparte con la API el secreto `NOTARY_HMAC_SECRET`; la extensión nunca lo ve. El payload de `session_completed` es `base64url(json).base64url(hmac)`.
