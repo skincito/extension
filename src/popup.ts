@@ -1,5 +1,6 @@
 import type {PendingTrade} from './types';
 import {config} from './config';
+import {askConfirm} from './ui/confirm';
 const $ = (id: string) => document.getElementById(id)!;
 async function send<T>(message: unknown): Promise<T> {
   const response = await chrome.runtime.sendMessage(message) as {ok: boolean; data?: T; error?: string};
@@ -32,7 +33,10 @@ function renderTrades(trades: PendingTrade[]): void {
     open.onclick = () => {void send({type: 'OPEN_TRADE', tradeId: t.id}).catch(error)};
     // Envía una oferta real sin pasar por la página de Steam: sólo visible en modo desarrollador.
     const direct = el('button', 'secondary dev-only', 'Oferta directa');
-    direct.onclick = () => {if (!confirm(`Crear oferta Steam del asset ${t.assetId} para ${t.buyerSteamId}?`)) return; void send({type: 'CREATE_OFFER', tradeId: t.id}).then(refresh).catch(error)};
+    direct.onclick = () => {void (async () => {
+      const ok = await askConfirm({title: '¿Crear la oferta en Steam?', message: `Se envía una oferta real del asset ${t.assetId} a ${t.buyerSteamId}, sin pasar por la página de Steam.`, confirmLabel: 'Crear oferta', danger: true});
+      if (ok) await send({type: 'CREATE_OFFER', tradeId: t.id}).then(refresh);
+    })().catch(error)};
     const actions = el('div', 'actions'); actions.append(open, direct);
     card.append(el('div', 'name', t.marketHashName), el('div', 'meta', `Asset ID ${t.assetId} · Comprador ${t.buyerSteamId}`), actions);
     $('trades').append(card);

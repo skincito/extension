@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "build:firefox": "node scripts/build.mjs --firefox",
+    "build:store-id": "node scripts/build.mjs --store-id",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

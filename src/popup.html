@@ -42,6 +42,12 @@ summary{cursor:pointer;color:var(--muted);font-size:12px}
 details p{color:var(--muted);font-size:12px;margin:8px 0}
 textarea{width:100%;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px;font:12px Consolas,monospace;resize:vertical}
 body:not(.dev) .dev-only{display:none}
+dialog.confirm{width:300px;border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--panel);color:var(--text);box-shadow:0 20px 50px -10px rgba(0,0,0,.7)}
+dialog.confirm::backdrop{background:rgba(0,0,0,.6)}
+.confirm-title{margin:0 0 6px;font-size:15px;font-weight:600}
+.confirm-message{margin:0 0 14px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+button.confirm-cancel{flex:1;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:none;color:var(--text);font:600 13px inherit;font-family:inherit;cursor:pointer}
+button.confirm-cancel:hover{background:var(--bg)}
 </style>
 </head>
 <body>

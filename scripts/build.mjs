@@ -34,6 +34,9 @@ if (firefox) {
   manifest.browser_specific_settings = {gecko: {id: 'trade-assistant@skincito.com', strict_min_version: '128.0',
     data_collection_permissions: {required: ['websiteActivity', 'websiteContent']}}};
 }
+// `--store-id`: la build desempaquetada toma el ID de la versión publicada (la web le habla a ese ID).
+// La clave pública va en store-id.key, fuera de git; las tiendas rechazan un manifest con `key`.
+if (process.argv.includes('--store-id')) manifest.key = (await fs.readFile('store-id.key', 'utf8')).trim();
 await fs.writeFile(`${output}/manifest.json`, JSON.stringify(manifest, null, 2));
 for (const page of ['popup.html', 'approve.html']) await fs.copyFile(`src/${page}`, `${output}/${page}`);
 // Los íconos son la "s" del favicon de skincito.com (apps/web/app/components/brand-mark.tsx).

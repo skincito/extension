@@ -13,6 +13,8 @@ npm run build
 
 Abrí `chrome://extensions`, activá **Developer mode**, elegí **Load unpacked** y seleccioná la carpeta `dist` de este proyecto. Después de cambiar la configuración, corré `npm run build` y recargá la extensión.
 
+Para que la web le hable a la build desempaquetada, tiene que tener el ID de la versión publicada: guardá la clave pública (`key` del manifest instalado desde la tienda) en `store-id.key` (está en `.gitignore`) y armá con `npm run build:store-id`. No subas a las tiendas una build armada así: rechazan el manifest con `key`.
+
 `npm run typecheck` y `npm test` verifican tipos y reglas de matching.
 
 ### Firefox
