@@ -36,6 +36,8 @@ if (firefox) {
 }
 await fs.writeFile(`${output}/manifest.json`, JSON.stringify(manifest, null, 2));
 for (const page of ['popup.html', 'approve.html']) await fs.copyFile(`src/${page}`, `${output}/${page}`);
+// Los íconos son la "s" del favicon de skincito.com (apps/web/app/components/brand-mark.tsx).
+await fs.cp('icons', `${output}/icons`, {recursive: true});
 if (!firefox) await fs.copyFile('src/offscreen.html', `${output}/offscreen.html`);
 const define = {'__SKINCITO_CONFIG__': JSON.stringify(config)};
 const entryPoints = {'background': 'src/background.ts', 'content': 'src/bridge/content.ts', 'page': 'src/bridge/page.ts', 'popup': 'src/popup.ts', 'approve': 'src/approve.ts',
