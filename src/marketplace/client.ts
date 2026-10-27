@@ -23,6 +23,9 @@ export function submitProof(tradeId: string, proof: ProofSubmission): Promise<Pr
 export function getSaldoSellRequest(listingId: string): Promise<SaldoSellRequest> {return api(`/extension/saldo/listings/${encodeURIComponent(listingId)}/sell`)}
 export function getSaldoBuyRequest(tradeId: string): Promise<SaldoBuyRequest> {return api(`/extension/saldo/trades/${encodeURIComponent(tradeId)}/buy`)}
 /** "Ya lo publiqué": la API agenda la verificación del listing en Steam. */
-export function confirmSaldoListing(listingId: string): Promise<unknown> {return api(`/saldo-listings/${encodeURIComponent(listingId)}/confirm`, {method: 'POST', body: '{}'})}
+/** "Ya lo publiqué". `steamListingId`: la publicación que la extensión vio confirmada entre las propias del usuario. */
+export function confirmSaldoListing(listingId: string, steamListingId?: string): Promise<unknown> {
+  return api(`/saldo-listings/${encodeURIComponent(listingId)}/confirm`, {method: 'POST', body: JSON.stringify(steamListingId ? {steamListingId} : {})});
+}
 /** "Ya la compré": la API agenda la verificación de la compra en Steam. */
 export function reportSaldoPurchase(tradeId: string): Promise<unknown> {return api(`/saldo-trades/${encodeURIComponent(tradeId)}/purchased`, {method: 'POST', body: '{}'})}

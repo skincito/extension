@@ -6,7 +6,7 @@ import type {ActiveTrade, OfferReport, SaldoBuyRequest, SaldoSellRequest} from '
 export type ExternalRequest = {type: 'SKINCITO_GET_STATUS'} | {type: 'SKINCITO_REQUEST_DELIVERY'; tradeId: string} | {type: 'SKINCITO_CANCEL_OFFER'; tradeOfferId: string}
   | {type: 'SKINCITO_REQUEST_SALDO_SELL'; saldoListingId: string} | {type: 'SKINCITO_REQUEST_SALDO_BUY'; saldoTradeId: string};
 export type InternalRequest = {type: 'WEB_REQUEST'; request: ExternalRequest} | {type: 'GET_STATUS'} | {type: 'GET_ACTIVE_TRADE'} | {type: 'OPEN_TRADE'; tradeId: string} | {type: 'CREATE_OFFER'; tradeId: string} | {type: 'PAGE_OFFER'; report: OfferReport}
-  | {type: 'REQUEST_DELIVERY'; tradeId: string} | {type: 'REQUEST_SALDO_SELL'; saldoListingId: string} | {type: 'REQUEST_SALDO_BUY'; saldoTradeId: string} | {type: 'CANCEL_OFFER'; tradeOfferId: string} | {type: 'GET_APPROVAL'; requestId: string} | {type: 'PING_APPROVAL'; requestId: string} | {type: 'RESOLVE_APPROVAL'; requestId: string; approved: boolean};
+  | {type: 'REQUEST_DELIVERY'; tradeId: string} | {type: 'REQUEST_SALDO_SELL'; saldoListingId: string} | {type: 'REQUEST_SALDO_BUY'; saldoTradeId: string} | {type: 'CANCEL_OFFER'; tradeOfferId: string} | {type: 'GET_APPROVAL'; requestId: string} | {type: 'PING_APPROVAL'; requestId: string} | {type: 'CHECK_SALDO_SELL'; requestId: string} | {type: 'RESOLVE_APPROVAL'; requestId: string; approved: boolean};
 /** Billetera de Steam como la muestra la ventana (centavos). */
 export interface WalletView {currency: number; balanceMinor: number}
 /** Lo que ve la ventana de aprobación. `steamId` es la cuenta de Steam logueada en el navegador; `wallet` es null si no se pudo leer. */

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {assertUsdWallet, buyForm, interpretBuy, interpretSell, parseWalletInfo, sellForm} from '../src/steam/market';
+import {assertUsdWallet, buyForm, findOwnListing, interpretBuy, interpretSell, parseWalletInfo, sellForm} from '../src/steam/market';
 import type {SaldoBuyRequest, SaldoSellRequest} from '../src/types';
 const fields = (form: URLSearchParams) => {const out: Record<string, string> = {}; form.forEach((value, key) => {out[key] = value}); return out};
 
@@ -46,5 +46,28 @@ describe('respuestas del market', () => {
     expect(interpretBuy(200, {wallet_info: {success: 1, wallet_balance: '100'}})).toEqual({bought: true, needsConfirmation: false, walletBalanceMinor: 100});
     expect(interpretBuy(200, {need_confirmation: true})).toMatchObject({bought: true, needsConfirmation: true});
     expect(() => interpretBuy(502, {message: 'The listing may have been removed'})).toThrow(/removed/);
+  });
+});
+
+describe('publicaciones propias (mylistings)', () => {
+  const mine = (listingid: string, id: string, appid = 730) => ({listingid, asset: {id, appid}});
+
+  it('mientras falta confirmarla en la app está en listings_to_confirm, y después en listings', () => {
+    expect(findOwnListing({success: true, listings: [], listings_to_confirm: [mine('111', '54242522916')]}, 730, '54242522916'))
+      .toEqual({listingId: '111', state: 'TO_CONFIRM'});
+    expect(findOwnListing({success: true, listings: [mine('111', '54242522916')], listings_to_confirm: []}, 730, '54242522916'))
+      .toEqual({listingId: '111', state: 'ACTIVE'});
+    expect(findOwnListing({success: true, listings_on_hold: [mine('111', '54242522916')]}, 730, '54242522916'))
+      .toEqual({listingId: '111', state: 'ON_HOLD'});
+  });
+
+  it('solo cuenta el mismo asset del mismo juego; sin publicación (cancelada) es null', () => {
+    const body = {success: true, listings: [mine('1', '999'), mine('2', '54242522916', 570)]};
+    expect(findOwnListing(body, 730, '54242522916')).toBeNull();
+  });
+
+  it('si Steam no devuelve las publicaciones, falla en vez de decir que no está', () => {
+    expect(() => findOwnListing({success: false}, 730, '1')).toThrow(/publicaciones/);
+    expect(() => findOwnListing(null, 730, '1')).toThrow(/publicaciones/);
   });
 });

@@ -1,5 +1,5 @@
 import {config} from './config';
-import {roleOf, type ActiveTrade, type PendingTrade, type OfferReport} from './types';
+import {roleOf, type ActiveTrade, type PendingTrade, type OfferReport, type SaldoSellRequest} from './types';
 import type {ApprovalView, ExternalRequest, InternalRequest} from './bridge/protocol';
 import {confirmSaldoListing, getPendingTrades, getSaldoBuyRequest, getSaldoSellRequest, reportOffer, reportSaldoPurchase, SkincitoAuthError} from './marketplace/client';
 import {getSteamSession} from './steam/session';
@@ -8,8 +8,8 @@ import {createOffer} from './steam/create-offer';
 import {monitorTrades} from './background/trade-monitor';
 import {getTradeOffers, cancelTradeOffer} from './steam/trade-offers';
 import {findBlockingOffer, OFFER_STATE_LABELS} from './marketplace/matching';
-import {approve, getApproval, reject, requestApproval, type ApprovalKind} from './background/approval';
-import {buySaldoListing, getWalletInfo, sellSaldoItem, type SaldoBuyResult, type SaldoSellResult} from './steam/market';
+import {approve, complete, getApproval, isAwaitingConfirmation, reject, requestApproval, type ApprovalKind, type Awaiting} from './background/approval';
+import {buySaldoListing, getOwnListing, getWalletInfo, sellSaldoItem, type SaldoBuyResult, type SaldoSellResult} from './steam/market';
 
 const DEMO_KEY = 'demoPendingTrade';
 const OPENED_TABS = 'openedTradeTabs';
@@ -77,11 +77,39 @@ async function deliver(tradeId: string): Promise<OfferReport> {
 }
 /** Resultado que vuelve a la web: si avisar a Skincito falló, la publicación o la compra igual ya se hizo en Steam. */
 type Reported<T> = T & {reported: boolean; reportError?: string};
-/** Publica el skin de la oferta de compra de saldo y avisa "Ya lo publiqué". */
-async function sellSaldo(saldoListingId: string): Promise<Reported<SaldoSellResult>> {
-  const result = await sellSaldoItem(await getSaldoSellRequest(saldoListingId));
-  try {await confirmSaldoListing(saldoListingId); return {...result, reported: true}}
-  catch (error) {return {...result, reported: false, reportError: (error as Error).message}}
+type SaldoSellOutcome = Reported<SaldoSellResult & {steamListingId: string | null}>;
+/** Publicaciones hechas que esperan la confirmación en la app de Steam, por oferta: qué asset buscar. */
+const sellsAwaitingConfirmation = new Map<string, SaldoSellRequest>();
+/** Avisa "Ya lo publiqué" con la publicación que se ve entre las propias, si ya se encontró. */
+async function reportSell(saldoListingId: string, result: SaldoSellResult, steamListingId: string | null): Promise<SaldoSellOutcome> {
+  sellsAwaitingConfirmation.delete(saldoListingId);
+  try {await confirmSaldoListing(saldoListingId, steamListingId ?? undefined); return {...result, steamListingId, reported: true}}
+  catch (error) {return {...result, steamListingId, reported: false, reportError: (error as Error).message}}
+}
+/**
+ * Publica el skin de la oferta de compra de saldo. Si Steam pide confirmarla en la app, la ventana queda
+ * esperando (`Awaiting`) hasta que la publicación aparezca activa entre las propias (`CHECK_SALDO_SELL`).
+ */
+async function sellSaldo(saldoListingId: string): Promise<SaldoSellOutcome | Awaiting> {
+  const request = await getSaldoSellRequest(saldoListingId);
+  const result = await sellSaldoItem(request);
+  const own = await getOwnListing(request.appId, request.assetId).catch(() => null);
+  if (!result.needsConfirmation || own?.state === 'ACTIVE') return reportSell(saldoListingId, result, own?.listingId ?? null);
+  sellsAwaitingConfirmation.set(saldoListingId, request);
+  const onClose: SaldoSellOutcome = {...result, steamListingId: null, reported: false, reportError: 'cerraste la ventana antes de que Steam confirmara la publicación'};
+  return {awaitingConfirmation: true, onClose};
+}
+/** "Ya la aprobé" (o el chequeo periódico de la ventana): ¿la publicación ya está activa en Steam? */
+async function checkSaldoSell(requestId: string): Promise<{confirmed: false; state: 'TO_CONFIRM' | 'ON_HOLD'} | {confirmed: true; result: SaldoSellOutcome}> {
+  const {kind, subjectId} = getApproval(requestId);
+  const request = sellsAwaitingConfirmation.get(subjectId);
+  if (kind !== 'SALDO_SELL' || !isAwaitingConfirmation(requestId) || !request) throw new Error('Este pedido no espera la confirmación de Steam.');
+  const own = await getOwnListing(request.appId, request.assetId);
+  if (!own) throw new Error('No encontramos la publicación en tu market de Steam. Si la cancelaste en la app, cerrá esta ventana y volvé a publicarla desde Skincito.');
+  if (own.state !== 'ACTIVE') return {confirmed: false, state: own.state};
+  const result = await reportSell(subjectId, {listed: true, needsConfirmation: true}, own.listingId);
+  complete(requestId, result);
+  return {confirmed: true, result};
 }
 /** Compra el listing de la operación y avisa "Ya la compré". Comprado en Steam, nunca falla: no hay que volver a comprar. */
 async function buySaldo(saldoTradeId: string): Promise<Reported<SaldoBuyResult>> {
@@ -139,6 +167,7 @@ async function handle(message: InternalRequest, tabId?: number, origin = ''): Pr
     case 'GET_APPROVAL': return approvalView(message.requestId);
     // La ventana avisa cada tanto: mantiene vivo el service worker mientras el vendedor decide.
     case 'PING_APPROVAL': return getApproval(message.requestId);
+    case 'CHECK_SALDO_SELL': return checkSaldoSell(message.requestId);
     case 'RESOLVE_APPROVAL':
       if (message.approved) return approve(message.requestId, runApproved);
       return reject(message.requestId);

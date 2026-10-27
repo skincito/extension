@@ -43,6 +43,12 @@ footer button{flex:1;border:0;border-radius:999px;padding:11px 12px;font:600 14p
 #approve:hover{filter:brightness(1.1)}
 button:disabled{opacity:.45;cursor:not-allowed;filter:none}
 [hidden]{display:none!important}
+.waiting{margin-top:14px;display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:10px;background:rgba(59,130,246,.1)}
+.waiting b{display:block;font-size:14px}
+.waiting p{margin:4px 0 0;color:var(--muted);font-size:12px}
+.spinner{flex:none;width:22px;height:22px;border-radius:50%;border:3px solid rgba(59,130,246,.25);border-top-color:var(--accent);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation-duration:2.4s}}
 </style>
 </head>
 <body>
@@ -61,6 +67,11 @@ button:disabled{opacity:.45;cursor:not-allowed;filter:none}
     <div class="route" id="rows"></div>
     <ul id="bullets"></ul>
   </section>
+  <!-- Publicado en Steam, falta confirmarlo en la app: approve.ts lo muestra hasta que aparece activa. -->
+  <div class="waiting" id="waiting" hidden role="status" aria-live="polite">
+    <div class="spinner" aria-hidden="true"></div>
+    <div><b>Confirmá la publicación en la app de Steam</b><p id="waitingText"></p></div>
+  </div>
   <div class="notice" id="notice"></div>
 </main>
 <footer>

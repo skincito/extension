@@ -47,6 +47,30 @@ export function buyForm(sessionId: string, request: SaldoBuyRequest): URLSearchP
 export interface SellResponse {success?: boolean; message?: string; requires_confirmation?: number | boolean; needs_mobile_confirmation?: boolean; needs_email_confirmation?: boolean}
 export interface BuyResponse {wallet_info?: {success?: number; wallet_balance?: string | number}; message?: string; need_confirmation?: boolean}
 export interface SaldoSellResult {listed: true; needsConfirmation: boolean}
+
+/** Una publicación propia en `/market/mylistings?norender=1`: `asset.id` es el mismo assetid del inventario. */
+export interface MyListing {listingid?: string; asset?: {id?: string; appid?: number}}
+export interface MyListingsResponse {success?: boolean; listings?: MyListing[]; listings_to_confirm?: MyListing[]; listings_on_hold?: MyListing[]}
+/** ACTIVE: ya está a la venta. TO_CONFIRM: espera la confirmación en la app móvil. ON_HOLD: Steam la retiene. */
+export interface OwnListing {listingId: string; state: 'ACTIVE' | 'TO_CONFIRM' | 'ON_HOLD'}
+
+/** La publicación del asset entre las propias, o null si no está (no se publicó o se canceló). */
+export function findOwnListing(body: MyListingsResponse | null, appId: number, assetId: string): OwnListing | null {
+  if (!body?.success) throw new Error('No pudimos leer tus publicaciones del market de Steam.');
+  const match = (list: MyListing[] | undefined) => list?.find(l => l.asset?.id === assetId && (l.asset.appid === undefined || Number(l.asset.appid) === appId) && /^\d+$/.test(l.listingid ?? ''));
+  for (const [list, state] of [[body.listings, 'ACTIVE'], [body.listings_to_confirm, 'TO_CONFIRM'], [body.listings_on_hold, 'ON_HOLD']] as const) {
+    const listing = match(list);
+    if (listing) return {listingId: listing.listingid!, state};
+  }
+  return null;
+}
+
+/** Busca en las publicaciones propias (con la sesión del usuario) la del asset de la oferta. */
+export async function getOwnListing(appId: number, assetId: string): Promise<OwnListing | null> {
+  const response = await fetch('https://steamcommunity.com/market/mylistings?start=0&count=100&norender=1', {credentials: 'include'});
+  if (!response.ok) throw new Error(`Steam respondió ${response.status} al leer tus publicaciones.`);
+  return findOwnListing(await response.json().catch(() => null) as MyListingsResponse | null, appId, assetId);
+}
 export interface SaldoBuyResult {bought: true; needsConfirmation: boolean; walletBalanceMinor: number | null}
 
 export function interpretSell(status: number, body: SellResponse | null): SaldoSellResult {

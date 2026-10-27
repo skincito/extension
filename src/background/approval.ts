@@ -9,7 +9,12 @@
  */
 export type ApprovalKind = 'DELIVERY' | 'SALDO_SELL' | 'SALDO_BUY';
 interface Waiter {resolve(result: unknown): void; reject(error: Error): void}
-interface Approval {kind: ApprovalKind; subjectId: string; origin: string; windowId?: number; waiters: Waiter[]}
+/**
+ * Lo que devuelve una acción aprobada que todavía no terminó (p. ej. una publicación que falta confirmar en
+ * la app de Steam): la ventana queda abierta esperando y, si el usuario la cierra, la web recibe `onClose`.
+ */
+export interface Awaiting {awaitingConfirmation: true; onClose: unknown}
+interface Approval {kind: ApprovalKind; subjectId: string; origin: string; windowId?: number; waiters: Waiter[]; awaiting?: Awaiting}
 const approvals = new Map<string, Approval>();
 const WIDTH = 380, HEIGHT = 600;
 const REJECTED: Record<ApprovalKind, string> = {
@@ -52,14 +57,28 @@ export function getApproval(requestId: string): {kind: ApprovalKind; subjectId: 
   return {kind: approval.kind, subjectId: approval.subjectId, origin: approval.origin};
 }
 
-/** Aprobado: actúa en Steam y avisa a la web. Si falla, el pedido sigue abierto para reintentar o rechazar. */
+const isAwaiting = (result: unknown): result is Awaiting => (result as Awaiting | null)?.awaitingConfirmation === true;
+
+/**
+ * Aprobado: actúa en Steam y avisa a la web. Si falla, el pedido sigue abierto para reintentar o rechazar.
+ * Si la acción devuelve `Awaiting`, el pedido queda abierto hasta `complete`.
+ */
 export async function approve(requestId: string, run: (kind: ApprovalKind, subjectId: string) => Promise<unknown>): Promise<unknown> {
   const {kind, subjectId} = getApproval(requestId);
   const result = await run(kind, subjectId);
   const approval = approvals.get(requestId);
+  if (isAwaiting(result) && approval) {approval.awaiting = result; return result}
+  complete(requestId, result);
+  return result;
+}
+
+export function isAwaitingConfirmation(requestId: string): boolean {return approvals.get(requestId)?.awaiting !== undefined}
+
+/** Termina un pedido que esperaba (ver `Awaiting`) y le pasa el resultado a la web. */
+export function complete(requestId: string, result: unknown): void {
+  const approval = approvals.get(requestId);
   approvals.delete(requestId);
   approval?.waiters.forEach(w => w.resolve(result));
-  return result;
 }
 
 export async function reject(requestId: string): Promise<void> {
@@ -72,7 +91,9 @@ export async function reject(requestId: string): Promise<void> {
 function settleRejected(requestId: string): void {
   const approval = approvals.get(requestId);
   approvals.delete(requestId);
-  approval?.waiters.forEach(w => w.reject(new Error(REJECTED[approval.kind])));
+  // Ya se actuó en Steam: no es un rechazo, la web recibe lo que corresponde a cerrar antes de terminar.
+  if (approval?.awaiting) approval.waiters.forEach(w => w.resolve(approval.awaiting!.onClose));
+  else approval?.waiters.forEach(w => w.reject(new Error(REJECTED[approval.kind])));
 }
 
 // Cerrar la ventana sin aprobar equivale a rechazar.
