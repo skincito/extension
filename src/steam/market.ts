@@ -50,7 +50,8 @@ export interface SaldoSellResult {listed: true; needsConfirmation: boolean}
 
 /** Una publicación propia en `/market/mylistings?norender=1`: `asset.id` es el mismo assetid del inventario. */
 export interface MyListing {listingid?: string; asset?: {id?: string; appid?: number}}
-export interface MyListingsResponse {success?: boolean; listings?: MyListing[]; listings_to_confirm?: MyListing[]; listings_on_hold?: MyListing[]}
+/** `total_count` cuenta las activas (`listings`, de a 100 por página); las por confirmar y las retenidas vienen enteras. */
+export interface MyListingsResponse {success?: boolean; total_count?: number; listings?: MyListing[]; listings_to_confirm?: MyListing[]; listings_on_hold?: MyListing[]}
 /** ACTIVE: ya está a la venta. TO_CONFIRM: espera la confirmación en la app móvil. ON_HOLD: Steam la retiene. */
 export interface OwnListing {listingId: string; state: 'ACTIVE' | 'TO_CONFIRM' | 'ON_HOLD'}
 
@@ -65,11 +66,32 @@ export function findOwnListing(body: MyListingsResponse | null, appId: number, a
   return null;
 }
 
+/** Steam pidió esperar (429): `retryAfterMs` si mandó `Retry-After`. */
+export class SteamRateLimitedError extends Error {
+  constructor(readonly retryAfterMs: number | null) {super('Steam pidió esperar antes de volver a consultar tus publicaciones.')}
+}
+/** Steam respondió sin las publicaciones: casi siempre, la sesión de steamcommunity.com se cerró o venció. */
+export class SteamListingsUnreadableError extends Error {
+  constructor() {super('No pudimos leer tus publicaciones del market de Steam: revisá que sigas con la sesión iniciada en steamcommunity.com.')}
+}
+export const MY_LISTINGS_PAGE = 100;
+
+/** Una página de las publicaciones propias (con la sesión del usuario). */
+export async function fetchMyListings(start = 0): Promise<MyListingsResponse> {
+  const response = await fetch(`https://steamcommunity.com/market/mylistings?start=${start}&count=${MY_LISTINGS_PAGE}&norender=1`, {credentials: 'include'});
+  if (response.status === 429) {
+    const seconds = Number(response.headers.get('Retry-After'));
+    throw new SteamRateLimitedError(Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null);
+  }
+  if (!response.ok) throw new Error(`Steam respondió ${response.status} al leer tus publicaciones.`);
+  const body = await response.json().catch(() => null) as MyListingsResponse | null;
+  if (!body?.success) throw new SteamListingsUnreadableError();
+  return body;
+}
+
 /** Busca en las publicaciones propias (con la sesión del usuario) la del asset de la oferta. */
 export async function getOwnListing(appId: number, assetId: string): Promise<OwnListing | null> {
-  const response = await fetch('https://steamcommunity.com/market/mylistings?start=0&count=100&norender=1', {credentials: 'include'});
-  if (!response.ok) throw new Error(`Steam respondió ${response.status} al leer tus publicaciones.`);
-  return findOwnListing(await response.json().catch(() => null) as MyListingsResponse | null, appId, assetId);
+  return findOwnListing(await fetchMyListings(), appId, assetId);
 }
 /**
  * Qué publicación quitar del asset de una oferta cancelada. Sin publicación no hay nada que hacer. Si la oferta

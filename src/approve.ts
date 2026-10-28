@@ -139,8 +139,9 @@ function render(view: ApprovalView): void {
 let poll: ReturnType<typeof setInterval> | undefined;
 let sellId = '';
 let checking = false;
-type SellWatchState = {state: 'WAITING'; listing: 'TO_CONFIRM' | 'ON_HOLD' | null}
+type SellWatchState = {state: 'WAITING'; listing: 'TO_CONFIRM' | 'ON_HOLD' | null; notice?: string; retryAt?: number}
   | {state: 'CONFIRMED'; steamListingId: string; reported: boolean; reportError?: string} | {state: 'GONE'} | {state: 'EXPIRED'};
+const hhmm = (ms: number) => new Date(ms).toLocaleTimeString('es-AR', {hour: '2-digit', minute: '2-digit'});
 function waiting(title: string, text: string): void {
   $('waiting').hidden = false; $('waitingTitle').textContent = title; $('waitingText').textContent = text; fit();
 }
@@ -161,16 +162,21 @@ function sellDone(steamListingId: string, result: {reported: boolean; reportErro
   notice('success', sellConfirmed(steamListingId, result)); finish();
   if (result.reported) closeSoon();
 }
-/** ¿Ya está confirmada la publicación? La ventana pregunta sola cada pocos segundos. */
+/**
+ * ¿Ya está confirmada la publicación? La ventana le pregunta al controlador de la extensión (sell-watch.ts), que
+ * decide cuándo ir a Steam: preguntarle seguido no suma pedidos a Steam.
+ */
 async function checkSell(): Promise<void> {
   if (checking) return;
   checking = true;
   try {
     const check = await send<SellWatchState>({type: 'CHECK_SALDO_SELL', saldoListingId: sellId});
     if (check.state === 'CONFIRMED') {sellDone(check.steamListingId, check); return}
-    if (check.state === 'GONE') {notice('error', 'La publicación ya no está en tu market de Steam: si la rechazaste, volvé a publicarla desde Skincito.'); finish(); return}
+    if (check.state === 'GONE') {notice('error', 'La publicación ya no está en tu market de Steam: si la rechazaste en la app, volvé a publicarla desde Skincito.'); finish(); return}
     if (check.state === 'EXPIRED') {notice('error', 'Pasó demasiado tiempo sin que la confirmes: revisá la publicación en Steam y tocá "Ya lo publiqué" en Skincito.'); finish(); return}
-    if (check.listing === 'ON_HOLD') notice('warning', 'Steam retiene la publicación (en espera): cuando la libere, la detectamos.');
+    if (check.notice) notice('warning', check.notice + (check.retryAt ? ` Volvemos a revisar a las ${hhmm(check.retryAt)}.` : ''));
+    else if (check.listing === 'ON_HOLD') notice('warning', 'Steam retiene la publicación (sin Steam Guard móvil puede ser hasta 15 días): cuando la libere, la detectamos y avisamos a Skincito. Podés cerrar esta ventana.');
+    else if ($('notice').className.includes('warning')) {$('notice').className = 'notice'; $('notice').textContent = ''; fit()}
   } catch (e) {
     notice('error', (e as Error).message);
   } finally {
@@ -189,7 +195,7 @@ function awaitSellConfirmation(): void {
   const close = $<HTMLButtonElement>('reject');
   close.textContent = 'Cerrar'; close.disabled = false;
   close.onclick = () => window.close();
-  poll = setInterval(() => {void checkSell()}, 5_000);
+  poll = setInterval(() => {void checkSell()}, 2_000);
 }
 /** Aprueba el pedido (o, al publicar, lo corre apenas abre la ventana). */
 async function run(): Promise<void> {
