@@ -3,10 +3,10 @@ import type {ApprovalView, WalletView} from './bridge/protocol';
 import {OFFER_STATE_LABELS} from './marketplace/matching';
 import {STEAM_USD, type SaldoBuyResult, type SaldoSellResult} from './steam/market';
 
-type SellOutcome = SaldoSellResult & {steamListingId: string | null; reported: boolean; reportError?: string};
-type SellCheck = {confirmed: false; state: 'TO_CONFIRM' | 'ON_HOLD'} | {confirmed: true; result: SellOutcome};
+type SellOutcome = SaldoSellResult & {steamListingId: string | null; reported: boolean; reportError?: string; watching: boolean};
 // Ventana que abre la extensión cuando la web pide una entrega, una publicación o una compra en el market: el usuario
-// aprueba o rechaza acá, fuera del alcance de la página.
+// aprueba o rechaza acá, fuera del alcance de la página. La publicación no se aprueba acá: la ventana publica sola y
+// el usuario la confirma en la app de Steam o por mail.
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const requestId = location.hash.slice(1);
 async function send<T>(message: unknown): Promise<T> {
@@ -84,16 +84,20 @@ function notReported(result: {reported: boolean; reportError?: string}, action: 
   return result.reported ? '' : `\nNo pudimos avisarle a Skincito (${result.reportError ?? 'error'}): tocá "${action}" en la web.`;
 }
 
+let sellName = '';
+function sellConfirmed(steamListingId: string, result: {reported: boolean; reportError?: string}): string {
+  return `Publicación confirmada en Steam (${steamListingId}). Avisamos a Skincito: te avisamos cuando tu oferta quede activa.` + notReported(result, 'Ya lo publiqué');
+}
+
 function renderSell(view: {sell: SaldoSellRequest; steamId: string; wallet: WalletView | null}): string | null {
   const {sell, steamId, wallet} = view;
-  header('Compra de saldo', '¿Publicar este skin en el market de Steam?', sell.name, `Asset ID ${sell.assetId}`);
+  header('Compra de saldo', 'Publicando tu skin en el market de Steam', sell.name, `Asset ID ${sell.assetId}`);
   rows([['Desde tu cuenta', steamId], ['Recibís (You receive)', usd(sell.priceMinor)], ['El comprador paga (aprox.)', usd(sell.buyerPaysMinor)]]);
-  bullets(['Se publica sólo este skin, a este precio.', 'Steam te va a pedir confirmar la publicación en la app móvil.', 'Después avisamos a Skincito para verificarla.']);
-  busyLabel = 'Publicando…';
-  $('waitingText').textContent = `Abrí la app de Steam, entrá a Confirmaciones y aceptá la publicación de ${sell.name}. La detectamos sola; si ya la aceptaste, tocá "Ya la aprobé".`;
+  bullets(['Se publica sólo este skin, a este precio.', 'Steam te pide confirmar la publicación en la app móvil o por mail.', 'Cuando la confirmes, avisamos a Skincito para verificarla.']);
+  busyLabel = 'Publicando…'; sellName = sell.name; sellId = sell.id;
   onSuccess = result => {
     const r = result as SellOutcome;
-    return `Publicación confirmada en Steam${r.steamListingId ? ` (${r.steamListingId})` : ''}. La verificamos y te avisamos cuando tu oferta quede activa.` + notReported(r, 'Ya lo publiqué');
+    return r.steamListingId ? sellConfirmed(r.steamListingId, r) : 'Publicada en Steam. Te avisamos cuando tu oferta quede activa.' + notReported(r, 'Ya lo publiqué');
   };
   if (steamId !== sell.steamId) return `Estás en Steam con otra cuenta. Esta oferta es de ${sell.steamId}: iniciá sesión con esa cuenta y volvé a pedirlo.`;
   return walletProblem(wallet);
@@ -122,55 +126,75 @@ function render(view: ApprovalView): void {
   $('loading').hidden = true; $('request').hidden = false;
   try {$('origin').textContent = new URL(view.origin).host} catch {}
   const problem = view.kind === 'SALDO_SELL' ? renderSell(view) : view.kind === 'SALDO_BUY' ? renderBuy(view) : renderDelivery(view);
-  if (problem) {notice('warning', problem); return}
+  if (problem) {
+    notice('warning', problem);
+    if (view.kind === 'SALDO_SELL') {$('approve').hidden = true; $('reject').textContent = 'Cerrar'}
+    return;
+  }
   $<HTMLButtonElement>('approve').disabled = false;
   fit();
+  // Publicar no necesita "Aprobar": la confirmación la da el usuario en la app de Steam o por mail.
+  if (view.kind === 'SALDO_SELL') void run();
 }
 let poll: ReturnType<typeof setInterval> | undefined;
+let sellId = '';
 let checking = false;
-/** ¿Ya está activa la publicación? `manual`: lo pidió el usuario con "Ya la aprobé" y espera respuesta. */
+type SellWatchState = {state: 'WAITING'; listing: 'TO_CONFIRM' | 'ON_HOLD' | null}
+  | {state: 'CONFIRMED'; steamListingId: string; reported: boolean; reportError?: string} | {state: 'GONE'} | {state: 'EXPIRED'};
+function waiting(title: string, text: string): void {
+  $('waiting').hidden = false; $('waitingTitle').textContent = title; $('waitingText').textContent = text; fit();
+}
+/** ¿Ya está confirmada la publicación? `manual`: lo pidió el usuario con "Ya lo publiqué" y espera respuesta. */
 async function checkSell(manual: boolean): Promise<void> {
   if (checking) return;
   checking = true;
   const approve = $<HTMLButtonElement>('approve');
   if (manual) {approve.disabled = true; approve.textContent = 'Revisando…'}
   try {
-    const check = await send<SellCheck>({type: 'CHECK_SALDO_SELL', requestId});
-    if (check.confirmed) {notice('success', onSuccess(check.result)); finish(); return}
-    if (check.state === 'ON_HOLD') notice('warning', 'Steam retiene la publicación (en espera): cuando la libere, la detectamos.');
-    else if (manual) notice('warning', 'Steam todavía no la muestra confirmada. Aceptala en la app y volvé a tocar "Ya la aprobé".');
+    const check = await send<SellWatchState>({type: 'CHECK_SALDO_SELL', saldoListingId: sellId});
+    if (check.state === 'CONFIRMED') {notice('success', sellConfirmed(check.steamListingId, check)); finish(); return}
+    if (check.state === 'GONE') {notice('error', 'La publicación ya no está en tu market de Steam: si la rechazaste, volvé a publicarla desde Skincito.'); finish(); return}
+    if (check.state === 'EXPIRED') {notice('error', 'Pasó demasiado tiempo sin que la confirmes: revisá la publicación en Steam y tocá "Ya lo publiqué" en Skincito.'); finish(); return}
+    if (check.listing === 'ON_HOLD') notice('warning', 'Steam retiene la publicación (en espera): cuando la libere, la detectamos.');
+    else if (manual) notice('warning', 'Steam todavía no la muestra confirmada. La seguimos revisando aunque cierres esta ventana.');
   } catch (e) {
     notice('error', (e as Error).message);
   } finally {
     checking = false;
-    if (manual && !approve.hidden) {approve.disabled = false; approve.textContent = 'Ya la aprobé'}
+    if (manual && !approve.hidden) {approve.disabled = false; approve.textContent = 'Ya lo publiqué'}
   }
 }
-/** Publicado en Steam, falta la confirmación en la app: círculo de carga, "Ya la aprobé" y chequeo periódico. */
+/** Publicada, falta la confirmación en la app o por mail: la extensión la sigue en segundo plano. */
 function awaitSellConfirmation(): void {
+  clearInterval(ping);
   // Lo que se iba a hacer ya pasó: queda la espera arriba, sin las aclaraciones previas.
-  $('waiting').hidden = false; $('bullets').hidden = true; $('notice').textContent = ''; fit();
+  $('bullets').hidden = true; $('notice').textContent = '';
+  $('title').textContent = 'Confirmá la publicación';
+  waiting('Confirmala en la app de Steam o en tu mail', `Steam te pide confirmar la publicación de ${sellName}. La seguimos en segundo plano y avisamos a Skincito apenas la confirmes, aunque cierres esta ventana.`);
   const approve = $<HTMLButtonElement>('approve'), close = $<HTMLButtonElement>('reject');
-  approve.textContent = 'Ya la aprobé'; approve.disabled = false;
+  approve.textContent = 'Ya lo publiqué'; approve.disabled = false;
   approve.onclick = () => {void checkSell(true)};
-  // Ya se publicó: cerrar no la cancela, la web pide tocar "Ya lo publiqué".
   close.textContent = 'Cerrar'; close.disabled = false;
   close.onclick = () => window.close();
   poll = setInterval(() => {void checkSell(false)}, 4_000);
 }
-$('approve').onclick = () => {void (async () => {
+/** Aprueba el pedido (o, al publicar, lo corre apenas abre la ventana). */
+async function run(): Promise<void> {
   const approve = $<HTMLButtonElement>('approve'), reject = $<HTMLButtonElement>('reject');
   approve.disabled = reject.disabled = true; approve.textContent = busyLabel; $('notice').textContent = '';
+  if (sellId) waiting('Publicando en Steam…', `Publicamos ${sellName} con lo que recibís en Steam.`);
   try {
     const result = await send<unknown>({type: 'RESOLVE_APPROVAL', requestId, approved: true});
-    if ((result as {awaitingConfirmation?: boolean} | null)?.awaitingConfirmation) {awaitSellConfirmation(); return}
+    if ((result as SellOutcome | null)?.watching) {awaitSellConfirmation(); return}
     notice('success', onSuccess(result));
     finish();
   } catch (e) {
+    $('waiting').hidden = true;
     notice('error', (e as Error).message);
     approve.disabled = reject.disabled = false; approve.textContent = 'Reintentar';
   }
-})()};
+}
+$('approve').onclick = () => {void run()};
 $('reject').onclick = () => {void send({type: 'RESOLVE_APPROVAL', requestId, approved: false}).finally(() => window.close())};
 // Los eventos mantienen vivo el service worker de Chrome mientras la ventana está abierta.
 const ping = setInterval(() => {void send({type: 'PING_APPROVAL', requestId}).catch(e => {notice('error', (e as Error).message); finish()})}, 20_000);

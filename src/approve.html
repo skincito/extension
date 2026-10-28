@@ -59,10 +59,10 @@ button:disabled{opacity:.45;cursor:not-allowed;filter:none}
 </header>
 <main>
   <div id="loading" class="center">Preparando el pedido…</div>
-  <!-- Publicado en Steam, falta confirmarlo en la app: approve.ts lo muestra arriba de todo hasta que aparece activa. -->
+  <!-- Publicando, o publicado y falta confirmarlo en la app o por mail: approve.ts lo muestra arriba de todo. -->
   <div class="waiting" id="waiting" hidden role="status" aria-live="polite">
     <div class="spinner" aria-hidden="true"></div>
-    <div><b>Confirmá la publicación en la app de Steam</b><p id="waitingText"></p></div>
+    <div><b id="waitingTitle"></b><p id="waitingText"></p></div>
   </div>
   <!-- Entrega, publicación o compra en el market: approve.ts completa el texto según el pedido. -->
   <section id="request" hidden>
