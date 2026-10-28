@@ -144,24 +144,37 @@ type SellWatchState = {state: 'WAITING'; listing: 'TO_CONFIRM' | 'ON_HOLD' | nul
 function waiting(title: string, text: string): void {
   $('waiting').hidden = false; $('waitingTitle').textContent = title; $('waitingText').textContent = text; fit();
 }
-/** ¿Ya está confirmada la publicación? `manual`: lo pidió el usuario con "Ya lo confirmé" y espera respuesta. */
-async function checkSell(manual: boolean): Promise<void> {
+/** Cierra la ventana a los pocos segundos, para que se alcance a leer el aviso: la cuenta va en "Cerrar". */
+const CLOSE_AFTER_S = 4;
+function closeSoon(): void {
+  const close = $<HTMLButtonElement>('reject');
+  let left = CLOSE_AFTER_S;
+  const tick = () => {
+    if (left <= 0) {window.close(); return}
+    close.textContent = `Cerrar (${left})`; left--;
+    setTimeout(tick, 1_000);
+  };
+  tick();
+}
+/** Confirmada y avisada a Skincito: no queda nada por hacer acá. Si el aviso falló, queda abierta con el error. */
+function sellDone(steamListingId: string, result: {reported: boolean; reportError?: string}): void {
+  notice('success', sellConfirmed(steamListingId, result)); finish();
+  if (result.reported) closeSoon();
+}
+/** ¿Ya está confirmada la publicación? La ventana pregunta sola cada pocos segundos. */
+async function checkSell(): Promise<void> {
   if (checking) return;
   checking = true;
-  const approve = $<HTMLButtonElement>('approve');
-  if (manual) {approve.disabled = true; approve.textContent = 'Revisando…'}
   try {
     const check = await send<SellWatchState>({type: 'CHECK_SALDO_SELL', saldoListingId: sellId});
-    if (check.state === 'CONFIRMED') {notice('success', sellConfirmed(check.steamListingId, check)); finish(); return}
+    if (check.state === 'CONFIRMED') {sellDone(check.steamListingId, check); return}
     if (check.state === 'GONE') {notice('error', 'La publicación ya no está en tu market de Steam: si la rechazaste, volvé a publicarla desde Skincito.'); finish(); return}
     if (check.state === 'EXPIRED') {notice('error', 'Pasó demasiado tiempo sin que la confirmes: revisá la publicación en Steam y tocá "Ya lo publiqué" en Skincito.'); finish(); return}
     if (check.listing === 'ON_HOLD') notice('warning', 'Steam retiene la publicación (en espera): cuando la libere, la detectamos.');
-    else if (manual) notice('warning', 'Steam todavía no la muestra confirmada. La seguimos revisando aunque cierres esta ventana.');
   } catch (e) {
     notice('error', (e as Error).message);
   } finally {
     checking = false;
-    if (manual && !approve.hidden) {approve.disabled = false; approve.textContent = 'Ya lo confirmé'}
   }
 }
 /** Publicada, falta la confirmación en la app o por mail: la extensión la sigue en segundo plano. */
@@ -171,12 +184,12 @@ function awaitSellConfirmation(): void {
   $('bullets').hidden = true; $('notice').textContent = '';
   $('title').textContent = 'Confirmá la publicación';
   waiting('Confirmala en la app de Steam o en tu mail', `Steam te pide confirmar la publicación de ${sellName}. La seguimos en segundo plano y avisamos a Skincito apenas la confirmes, aunque cierres esta ventana.`);
-  const approve = $<HTMLButtonElement>('approve'), close = $<HTMLButtonElement>('reject');
-  approve.textContent = 'Ya lo confirmé'; approve.disabled = false;
-  approve.onclick = () => {void checkSell(true)};
+  // Se detecta sola apenas la confirmás: no hace falta un botón para revisar.
+  $('approve').hidden = true;
+  const close = $<HTMLButtonElement>('reject');
   close.textContent = 'Cerrar'; close.disabled = false;
   close.onclick = () => window.close();
-  poll = setInterval(() => {void checkSell(false)}, 4_000);
+  poll = setInterval(() => {void checkSell()}, 4_000);
 }
 /** Aprueba el pedido (o, al publicar, lo corre apenas abre la ventana). */
 async function run(): Promise<void> {
@@ -185,7 +198,9 @@ async function run(): Promise<void> {
   if (sellId) waiting('Publicando en Steam…', `Publicamos ${sellName} con lo que recibís en Steam.`);
   try {
     const result = await send<unknown>({type: 'RESOLVE_APPROVAL', requestId, approved: true});
-    if ((result as SellOutcome | null)?.watching) {awaitSellConfirmation(); return}
+    const sell = sellId ? result as SellOutcome : null;
+    if (sell?.watching) {awaitSellConfirmation(); return}
+    if (sell?.steamListingId) {sellDone(sell.steamListingId, sell); return}
     notice('success', onSuccess(result));
     finish();
   } catch (e) {
