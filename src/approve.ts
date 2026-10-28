@@ -189,7 +189,7 @@ function awaitSellConfirmation(): void {
   const close = $<HTMLButtonElement>('reject');
   close.textContent = 'Cerrar'; close.disabled = false;
   close.onclick = () => window.close();
-  poll = setInterval(() => {void checkSell()}, 4_000);
+  poll = setInterval(() => {void checkSell()}, 5_000);
 }
 /** Aprueba el pedido (o, al publicar, lo corre apenas abre la ventana). */
 async function run(): Promise<void> {
