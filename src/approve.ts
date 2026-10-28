@@ -144,7 +144,7 @@ type SellWatchState = {state: 'WAITING'; listing: 'TO_CONFIRM' | 'ON_HOLD' | nul
 function waiting(title: string, text: string): void {
   $('waiting').hidden = false; $('waitingTitle').textContent = title; $('waitingText').textContent = text; fit();
 }
-/** ¿Ya está confirmada la publicación? `manual`: lo pidió el usuario con "Ya lo publiqué" y espera respuesta. */
+/** ¿Ya está confirmada la publicación? `manual`: lo pidió el usuario con "Ya lo confirmé" y espera respuesta. */
 async function checkSell(manual: boolean): Promise<void> {
   if (checking) return;
   checking = true;
@@ -161,7 +161,7 @@ async function checkSell(manual: boolean): Promise<void> {
     notice('error', (e as Error).message);
   } finally {
     checking = false;
-    if (manual && !approve.hidden) {approve.disabled = false; approve.textContent = 'Ya lo publiqué'}
+    if (manual && !approve.hidden) {approve.disabled = false; approve.textContent = 'Ya lo confirmé'}
   }
 }
 /** Publicada, falta la confirmación en la app o por mail: la extensión la sigue en segundo plano. */
@@ -172,7 +172,7 @@ function awaitSellConfirmation(): void {
   $('title').textContent = 'Confirmá la publicación';
   waiting('Confirmala en la app de Steam o en tu mail', `Steam te pide confirmar la publicación de ${sellName}. La seguimos en segundo plano y avisamos a Skincito apenas la confirmes, aunque cierres esta ventana.`);
   const approve = $<HTMLButtonElement>('approve'), close = $<HTMLButtonElement>('reject');
-  approve.textContent = 'Ya lo publiqué'; approve.disabled = false;
+  approve.textContent = 'Ya lo confirmé'; approve.disabled = false;
   approve.onclick = () => {void checkSell(true)};
   close.textContent = 'Cerrar'; close.disabled = false;
   close.onclick = () => window.close();
